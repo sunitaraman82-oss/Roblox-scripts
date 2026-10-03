@@ -1,165 +1,183 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
-local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
-
--- SETTINGS STATE
-local settings = {
-    aimlockEnabled = true,
-    espEnabled = true,
-    targetPart = "Head", -- Options: "Head", "Torso", "Random"
-    smoothness = 0.15,
-    maxDistance = 400
+local AIMBOT_SETTINGS = {
+    Enabled = true,
+    Smoothing = 0.2,
 }
 
--- CREATE CLEAN MOBILE UI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TrainerHub"
-ScreenGui.Parent = (RunService:IsStudio() and player.PlayerGui or CoreGui)
+local FOV_SETTINGS = {
+    Visible = true,
+    Radius = 150,
+    Color = Color3.fromRGB(0, 255, 0),
+    Thickness = 1,
+    NumSides = 64,
+    Filled = false,
+    Transparency = 1
+}
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 220, 0, 260)
-MainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
+local ESP_SETTINGS = {
+    Enabled = true,
+    Boxes = true,
+    Names = true,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    TextColor = Color3.fromRGB(255, 255, 255)
+}
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = FOV_SETTINGS.Visible
+FOVCircle.Radius = FOV_SETTINGS.Radius
+FOVCircle.Color = FOV_SETTINGS.Color
+FOVCircle.Thickness = FOV_SETTINGS.Thickness
+FOVCircle.NumSides = FOV_SETTINGS.NumSides
+FOVCircle.Filled = FOV_SETTINGS.Filled
+FOVCircle.Transparency = FOV_SETTINGS.Transparency
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "🎯 AIM & ESP CONFIG"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 16
-Title.Parent = MainFrame
-Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
+local ESPCache = {}
 
--- Helper function to make toggle buttons
-local function createToggle(text, position, configKey)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 190, 0, 35)
-    button.Position = position
-    button.Font = Enum.Font.SourceSansSemibold
-    button.TextSize = 14
-    button.Parent = MainFrame
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+local function ClearESP(character)
+    if ESPCache[character] then
+        if ESPCache[character].Box then ESPCache[character].Box:Remove() end
+        if ESPCache[character].Text then ESPCache[character].Text:Remove() end
+        ESPCache[character] = nil
+    end
+end
+
+local Targeting = { target = nil }
+
+function Targeting:GetClosestPlayer()
+    local PlayersService = cloneref(game:GetService('Players'))
+    local WorkspaceService = cloneref(game:GetService('Workspace'))
+    local ReplicatedFirstService = cloneref(game:GetService('ReplicatedFirst'))
+    local ReplicatedStorageService = cloneref(game:GetService('ReplicatedStorage'))
     
-    local function updateVisual()
-        if settings[configKey] == true then
-            button.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-            button.Text = text .. ": ON"
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        elseif settings[configKey] == false then
-            button.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
-            button.Text = text .. ": OFF"
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            button.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
-            button.Text = text .. ": " .. tostring(settings[configKey])
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    local LocalPlayer = PlayersService.LocalPlayer
+    local Camera = WorkspaceService.CurrentCamera
+    
+    local NeuronModule = require(game.FindFirstChild(ReplicatedFirstService, 'neuron', true))
+    local StatesModule = require(game.FindFirstChild(ReplicatedStorageService, 'States', true))
+    local EntitiesFolder = game.GetChildren(game.FindFirstChild(WorkspaceService, 'Entities', true))
+    
+    local ClosestDistance = FOV_SETTINGS.Radius 
+    Targeting.target = nil
+    
+    local PotentialTargets = {}
+    local RenderedThisFrame = {}
+    
+    for _, Player in PlayersService:GetPlayers() do
+        if Player == LocalPlayer then continue end
+        local Character = NeuronModule:get_character(Player)
+        if Character then 
+            table.insert(PotentialTargets, { char = Character, name = Player.Name }) 
         end
     end
     
-    button.MouseButton1Click:Connect(function()
-        if type(settings[configKey]) == "boolean" then
-            settings[configKey] = not settings[configKey]
-        elseif configKey == "targetPart" then
-            if settings.targetPart == "Head" then settings.targetPart = "Torso"
-            elseif settings.targetPart == "Torso" then settings.targetPart = "Random"
-            else settings.targetPart = "Head" end
-        end
-        updateVisual()
-    end)
-    updateVisual()
-end
-
-createToggle("Aimlock Tracker", UDim2.new(0, 15, 0, 55), "aimlockEnabled")
-createToggle("Target Target Part", UDim2.new(0, 15, 0, 100), "targetPart")
-createToggle("Visual ESP Boxes", UDim2.new(0, 15, 0, 145), "espEnabled")
-
--- TARGET CALCULATOR WITH FILTERS
-local function getBestTarget()
-    local closestTarget = nil
-    local shortestDistance = math.huge
-    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        local isValid = false
-        local targetPos = nil
+    for _, Entity in EntitiesFolder do
+        table.insert(PotentialTargets, { char = Entity, name = Entity.Name })
+    end
+    
+    local ScreenCenter = Vector2.new((Camera.ViewportSize.X / 2), (Camera.ViewportSize.Y / 2))
+    
+    if FOV_SETTINGS.Visible then
+        FOVCircle.Position = ScreenCenter
+    end
+    
+    for _, TargetObj in PotentialTargets do
+        local Character = TargetObj.char
+        local TargetName = TargetObj.name
         
-        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj ~= player.Character then
-            -- Standard Player tracking logic
-            local partName = settings.targetPart
-            if partName == "Random" then
-                partName = (math.random(1, 2) == 1) and "Head" or "HumanoidRootPart"
-            elseif partName == "Torso" then
-                partName = obj:FindFirstChild("UpperTorso") and "UpperTorso" or "Torso"
+        local IsDead = StatesModule:GetStateValue(Character, 'Dead', false)
+        if IsDead then 
+            ClearESP(Character)
+            continue 
+        end
+        
+        local Head = game.FindFirstChild(Character, 'HitboxHead')
+        local Root = game.FindFirstChild(Character, 'HumanoidRootPart') or game.FindFirstChild(Character, 'LowerTorso')
+        
+        if not Head then 
+            ClearESP(Character)
+            continue 
+        end
+        
+        local ScreenPosition, OnScreen = Camera:WorldToViewportPoint(Head.Position)
+        
+        if OnScreen then
+            local DistanceFromCenter = (Vector2.new(ScreenPosition.X, ScreenPosition.Y) - ScreenCenter).Magnitude
+            if DistanceFromCenter < ClosestDistance then
+                ClosestDistance = DistanceFromCenter
+                Targeting.target = Head.Position
+            end
+        end
+        
+        if ESP_SETTINGS.Enabled and OnScreen and Root then
+            RenderedThisFrame[Character] = true
+            
+            local RootPos, RootOnScreen = Camera:WorldToViewportPoint(Root.Position)
+            local HeadPos = Camera:WorldToViewportPoint(Head.Position + Vector3.new(0, 0.5, 0))
+            local LegPos = Camera:WorldToViewportPoint(Root.Position - Vector3.new(0, 3, 0))
+            
+            local BoxHeight = math.abs(HeadPos.Y - LegPos.Y)
+            local BoxWidth = BoxHeight * 0.6
+            
+            if not ESPCache[Character] then
+                ESPCache[Character] = {
+                    Box = Drawing.new("Square"),
+                    Text = Drawing.new("Text")
+                }
             end
             
-            local chosenPart = obj:FindFirstChild(partName)
-            if chosenPart and obj.Humanoid.Health > 0 then
-                isValid = true
-                targetPos = chosenPart.Position
+            local Visuals = ESPCache[Character]
+            
+            if ESP_SETTINGS.Boxes then
+                Visuals.Box.Visible = true
+                Visuals.Box.Size = Vector2.new(BoxWidth, BoxHeight)
+                Visuals.Box.Position = Vector2.new(RootPos.X - (BoxWidth / 2), HeadPos.Y)
+                Visuals.Box.Color = ESP_SETTINGS.BoxColor
+                Visuals.Box.Thickness = 1
+                Visuals.Box.Filled = false
+            else
+                Visuals.Box.Visible = false
             end
-        elseif obj:IsA("BasePart") and not obj:IsDescendantOf(player.Character) and obj.Name ~= "Baseplate" and obj.Name ~= "Terrain" then
-            -- Standing map target fallback
-            if obj.Size.X < 15 and obj.Size.Y < 15 then
-                isValid = true
-                targetPos = obj.Position
+            
+            if ESP_SETTINGS.Names then
+                Visuals.Text.Visible = true
+                Visuals.Text.Text = TargetName
+                Visuals.Text.Size = 16
+                Visuals.Text.Center = true
+                Visuals.Text.Outline = true
+                Visuals.Text.Position = Vector2.new(RootPos.X, HeadPos.Y - 20)
+                Visuals.Text.Color = ESP_SETTINGS.TextColor
+            else
+                Visuals.Text.Visible = false
             end
-        end
-
-        if isValid and targetPos then
-            local distanceToPlayer = (targetPos - camera.CFrame.Position).Magnitude
-            if distanceToPlayer <= settings.maxDistance then
-                local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
-                if onScreen and screenPos.Z > 0 then
-                    local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                    if distanceToCenter < shortestDistance then
-                        shortestDistance = distanceToCenter
-                        closestTarget = targetPos
-                    end
-                end
-            end
+        else
+            ClearESP(Character)
         end
     end
-    return closestTarget
+    
+    for CachedChar, _ in pairs(ESPCache) do
+        if not RenderedThisFrame[CachedChar] then
+            ClearESP(CachedChar)
+        end
+    end
 end
 
--- ESP SYSTEM RENDERING LAYER
-local espFolder = Instance.new("Folder", Workspace)
-espFolder.Name = "EspCacheSystem"
+local RunService = cloneref(game:GetService('RunService'))
+local Camera = cloneref(game:GetService('Workspace')).CurrentCamera
+local ReplicatedStorageService = cloneref(game:GetService('ReplicatedStorage'))
+local CameraHandlerModule = require(game.FindFirstChild(ReplicatedStorageService, 'CameraHandler', true))
 
-RunService.RenderStepped:Connect(function()
-    espFolder:ClearAllChildren()
-    local targetPos = getBestTarget()
+RunService.PreRender:Connect(function()
+    Targeting:GetClosestPlayer()
     
-    -- Execute Aim Lock Frame adjustments safely
-    if settings.aimlockEnabled and targetPos then
-        local targetRotation = CFrame.lookAt(camera.CFrame.Position, targetPos)
-        camera.CFrame = camera.CFrame:Lerp(targetRotation, settings.smoothness)
-    end
-    
-    -- Draw Active ESP box markers if turned on
-    if settings.espEnabled then
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Name == "Head" and not obj:IsDescendantOf(player.Character) then
-                local box = Instance.new("BoxHandleAdornment")
-                box.Size = Vector3.new(2, 2, 2)
-                box.Color3 = Color3.fromRGB(231, 76, 60)
-                box.AlwaysOnTop = true
-                box.ZIndex = 5
-                box.Adornee = obj
-                box.Parent = espFolder
-            end
-        end
+    if AIMBOT_SETTINGS.Enabled and CameraHandlerModule.firstPerson and Targeting.target then
+        local Direction = (Targeting.target - Camera.CFrame.p).Unit
+        
+        local TargetPitch = math.asin(Direction.Y)
+        local TargetYaw = math.atan2(-Direction.X, -Direction.Z)
+        local TargetVector = vector.create(TargetPitch, TargetYaw, 0)
+        
+        CameraHandlerModule.currentRotation = CameraHandlerModule.currentRotation:lerp(
+            TargetVector, 
+            1 - AIMBOT_SETTINGS.Smoothing
+        )
     end
 end)
