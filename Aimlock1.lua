@@ -1,183 +1,158 @@
-local AIMBOT_SETTINGS = {
-    Enabled = true,
-    Smoothing = 0.2,
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+-- FRAMEWORK CORE CONFIG
+local UI_SETTINGS = {
+    Aimbot = true,
+    Esp = true,
+    Target = "Head", -- "Head", "Torso", "Random"
+    Smooth = 0.12,
+    Radius = 150
 }
 
-local FOV_SETTINGS = {
-    Visible = true,
-    Radius = 150,
-    Color = Color3.fromRGB(0, 255, 0),
-    Thickness = 1,
-    NumSides = 64,
-    Filled = false,
-    Transparency = 1
-}
-
-local ESP_SETTINGS = {
-    Enabled = true,
-    Boxes = true,
-    Names = true,
-    BoxColor = Color3.fromRGB(255, 255, 255),
-    TextColor = Color3.fromRGB(255, 255, 255)
-}
-
+-- FOV RENDERING BOUNDS
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = FOV_SETTINGS.Visible
-FOVCircle.Radius = FOV_SETTINGS.Radius
-FOVCircle.Color = FOV_SETTINGS.Color
-FOVCircle.Thickness = FOV_SETTINGS.Thickness
-FOVCircle.NumSides = FOV_SETTINGS.NumSides
-FOVCircle.Filled = FOV_SETTINGS.Filled
-FOVCircle.Transparency = FOV_SETTINGS.Transparency
+FOVCircle.Visible = true
+FOVCircle.Radius = UI_SETTINGS.Radius
+FOVCircle.Color = Color3.fromRGB(0, 255, 0)
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 64
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.8
 
-local ESPCache = {}
+-- GRAPHICAL UI INTERFACE FRAMEWORK
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UniversalHub"
+ScreenGui.Parent = (RunService:IsStudio() and player.PlayerGui or CoreGui)
 
-local function ClearESP(character)
-    if ESPCache[character] then
-        if ESPCache[character].Box then ESPCache[character].Box:Remove() end
-        if ESPCache[character].Text then ESPCache[character].Text:Remove() end
-        ESPCache[character] = nil
-    end
-end
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 220, 0, 250)
+Frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.Parent = ScreenGui
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
 
-local Targeting = { target = nil }
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "🎯 CUSTOM TRAINER HUD"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 14
+Title.Parent = Frame
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
 
-function Targeting:GetClosestPlayer()
-    local PlayersService = cloneref(game:GetService('Players'))
-    local WorkspaceService = cloneref(game:GetService('Workspace'))
-    local ReplicatedFirstService = cloneref(game:GetService('ReplicatedFirst'))
-    local ReplicatedStorageService = cloneref(game:GetService('ReplicatedStorage'))
+local function makeBtn(txt, pos, key)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 190, 0, 35)
+    btn.Position = pos
+    btn.Font = Enum.Font.SourceSansSemibold
+    btn.TextSize = 14
+    btn.Parent = Frame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     
-    local LocalPlayer = PlayersService.LocalPlayer
-    local Camera = WorkspaceService.CurrentCamera
-    
-    local NeuronModule = require(game.FindFirstChild(ReplicatedFirstService, 'neuron', true))
-    local StatesModule = require(game.FindFirstChild(ReplicatedStorageService, 'States', true))
-    local EntitiesFolder = game.GetChildren(game.FindFirstChild(WorkspaceService, 'Entities', true))
-    
-    local ClosestDistance = FOV_SETTINGS.Radius 
-    Targeting.target = nil
-    
-    local PotentialTargets = {}
-    local RenderedThisFrame = {}
-    
-    for _, Player in PlayersService:GetPlayers() do
-        if Player == LocalPlayer then continue end
-        local Character = NeuronModule:get_character(Player)
-        if Character then 
-            table.insert(PotentialTargets, { char = Character, name = Player.Name }) 
-        end
-    end
-    
-    for _, Entity in EntitiesFolder do
-        table.insert(PotentialTargets, { char = Entity, name = Entity.Name })
-    end
-    
-    local ScreenCenter = Vector2.new((Camera.ViewportSize.X / 2), (Camera.ViewportSize.Y / 2))
-    
-    if FOV_SETTINGS.Visible then
-        FOVCircle.Position = ScreenCenter
-    end
-    
-    for _, TargetObj in PotentialTargets do
-        local Character = TargetObj.char
-        local TargetName = TargetObj.name
-        
-        local IsDead = StatesModule:GetStateValue(Character, 'Dead', false)
-        if IsDead then 
-            ClearESP(Character)
-            continue 
-        end
-        
-        local Head = game.FindFirstChild(Character, 'HitboxHead')
-        local Root = game.FindFirstChild(Character, 'HumanoidRootPart') or game.FindFirstChild(Character, 'LowerTorso')
-        
-        if not Head then 
-            ClearESP(Character)
-            continue 
-        end
-        
-        local ScreenPosition, OnScreen = Camera:WorldToViewportPoint(Head.Position)
-        
-        if OnScreen then
-            local DistanceFromCenter = (Vector2.new(ScreenPosition.X, ScreenPosition.Y) - ScreenCenter).Magnitude
-            if DistanceFromCenter < ClosestDistance then
-                ClosestDistance = DistanceFromCenter
-                Targeting.target = Head.Position
-            end
-        end
-        
-        if ESP_SETTINGS.Enabled and OnScreen and Root then
-            RenderedThisFrame[Character] = true
-            
-            local RootPos, RootOnScreen = Camera:WorldToViewportPoint(Root.Position)
-            local HeadPos = Camera:WorldToViewportPoint(Head.Position + Vector3.new(0, 0.5, 0))
-            local LegPos = Camera:WorldToViewportPoint(Root.Position - Vector3.new(0, 3, 0))
-            
-            local BoxHeight = math.abs(HeadPos.Y - LegPos.Y)
-            local BoxWidth = BoxHeight * 0.6
-            
-            if not ESPCache[Character] then
-                ESPCache[Character] = {
-                    Box = Drawing.new("Square"),
-                    Text = Drawing.new("Text")
-                }
-            end
-            
-            local Visuals = ESPCache[Character]
-            
-            if ESP_SETTINGS.Boxes then
-                Visuals.Box.Visible = true
-                Visuals.Box.Size = Vector2.new(BoxWidth, BoxHeight)
-                Visuals.Box.Position = Vector2.new(RootPos.X - (BoxWidth / 2), HeadPos.Y)
-                Visuals.Box.Color = ESP_SETTINGS.BoxColor
-                Visuals.Box.Thickness = 1
-                Visuals.Box.Filled = false
-            else
-                Visuals.Box.Visible = false
-            end
-            
-            if ESP_SETTINGS.Names then
-                Visuals.Text.Visible = true
-                Visuals.Text.Text = TargetName
-                Visuals.Text.Size = 16
-                Visuals.Text.Center = true
-                Visuals.Text.Outline = true
-                Visuals.Text.Position = Vector2.new(RootPos.X, HeadPos.Y - 20)
-                Visuals.Text.Color = ESP_SETTINGS.TextColor
-            else
-                Visuals.Text.Visible = false
-            end
+    local function redraw()
+        if UI_SETTINGS[key] == true then
+            btn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+            btn.Text = txt .. ": ON"
+        elseif UI_SETTINGS[key] == false then
+            btn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+            btn.Text = txt .. ": OFF"
         else
-            ClearESP(Character)
+            btn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+            btn.Text = txt .. ": " .. tostring(UI_SETTINGS[key])
         end
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
     
-    for CachedChar, _ in pairs(ESPCache) do
-        if not RenderedThisFrame[CachedChar] then
-            ClearESP(CachedChar)
+    btn.MouseButton1Click:Connect(function()
+        if type(UI_SETTINGS[key]) == "boolean" then
+            UI_SETTINGS[key] = not UI_SETTINGS[key]
+        elseif key == "Target" then
+            if UI_SETTINGS.Target == "Head" then UI_SETTINGS.Target = "Torso"
+            elseif UI_SETTINGS.Target == "Torso" then UI_SETTINGS.Target = "Random"
+            else UI_SETTINGS.Target = "Head" end
         end
-    end
+        redraw()
+    end)
+    redraw()
 end
 
-local RunService = cloneref(game:GetService('RunService'))
-local Camera = cloneref(game:GetService('Workspace')).CurrentCamera
-local ReplicatedStorageService = cloneref(game:GetService('ReplicatedStorage'))
-local CameraHandlerModule = require(game.FindFirstChild(ReplicatedStorageService, 'CameraHandler', true))
+makeBtn("Aimlock Engine", UDim2.new(0, 15, 0, 55), "Aimbot")
+makeBtn("Target Logic", UDim2.new(0, 15, 0, 100), "Target")
+makeBtn("Active ESP", UDim2.new(0, 15, 0, 145), "Esp")
 
-RunService.PreRender:Connect(function()
-    Targeting:GetClosestPlayer()
+-- COMPACT TARGET FINDER
+local function scanTargets()
+    local bestPart = nil
+    local shortestDist = math.huge
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    FOVCircle.Position = screenCenter
+
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        local targetPos = nil
+        
+        -- Player rig checking
+        if v:IsA("Model") and v:FindFirstChildOfClass("Humanoid") and v ~= player.Character then
+            if v.Humanoid.Health > 0 then
+                local pName = UI_SETTINGS.Target
+                if pName == "Random" then pName = (math.random(1,2) == 1) and "Head" or "HumanoidRootPart" end
+                if pName == "Torso" then pName = v:FindFirstChild("UpperTorso") and "UpperTorso" or "Torso" end
+                local p = v:FindFirstChild(pName)
+                if p then targetPos = p.Position end
+            end
+        -- Object standalone check for map target shapes
+        elseif v:IsA("BasePart") and not v:IsDescendantOf(player.Character) and v.Name ~= "Baseplate" and v.Name ~= "Terrain" then
+            if v.Size.X < 12 and v.Size.Y < 12 and not v.Name:lower():find("floor") and not v.Name:lower():find("wall") then
+                targetPos = v.Position
+            end
+        end
+
+        if targetPos then
+            local screenPos, visible = camera:WorldToViewportPoint(targetPos)
+            if visible and screenPos.Z > 0 then
+                local m = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                if m < UI_SETTINGS.Radius and m < shortestDist then
+                    shortestDist = m
+                    bestPart = targetPos
+                end
+            end
+        end
+    end
+    return bestPart
+end
+
+local cache = Instance.new("Folder", Workspace)
+
+RunService.RenderStepped:Connect(function()
+    cache:ClearAllChildren()
+    local target = scanTargets()
     
-    if AIMBOT_SETTINGS.Enabled and CameraHandlerModule.firstPerson and Targeting.target then
-        local Direction = (Targeting.target - Camera.CFrame.p).Unit
-        
-        local TargetPitch = math.asin(Direction.Y)
-        local TargetYaw = math.atan2(-Direction.X, -Direction.Z)
-        local TargetVector = vector.create(TargetPitch, TargetYaw, 0)
-        
-        CameraHandlerModule.currentRotation = CameraHandlerModule.currentRotation:lerp(
-            TargetVector, 
-            1 - AIMBOT_SETTINGS.Smoothing
-        )
+    if UI_SETTINGS.Aimbot and target then
+        local goal = CFrame.lookAt(camera.CFrame.Position, target)
+        camera.CFrame = camera.CFrame:Lerp(goal, UI_SETTINGS.Smooth)
+    end
+    
+    if UI_SETTINGS.Esp then
+        for _, v in ipairs(Workspace:GetDescendants()) do
+            if v:IsA("BasePart") and not v:IsDescendantOf(player.Character) and v.Name ~= "Baseplate" and v.Name ~= "Terrain" then
+                if v.Size.X < 12 and v.Size.Y < 12 and not v.Name:lower():find("floor") and not v.Name:lower():find("wall") then
+                    local box = Instance.new("BoxHandleAdornment")
+                    box.Size = v.Size + Vector3.new(0.3, 0.3, 0.3)
+                    box.Color3 = Color3.fromRGB(0, 255, 0)
+                    box.AlwaysOnTop = true
+                    box.ZIndex = 5
+                    box.Adornee = v
+                    box.Parent = cache
+                end
+            end
+        end
     end
 end)
