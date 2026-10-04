@@ -1,35 +1,5 @@
---// AimAssist UI
---// For your own Roblox experience / Studio testing
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
 --==================================================
--- SETTINGS
---==================================================
-
-local Settings = {
-	Enabled = false,
-	TargetLock = true,
-	WallCheck = true,
-	TeamCheck = true,
-
-	FOV = 250,
-	Smoothness = 85,
-	Prediction = 0.08,
-
-	HitPart = "Head"
-}
-
-local Target = nil
-local UIVisible = true
-
---==================================================
--- GUI
+-- MOBILE AIMASSIST UI
 --==================================================
 
 local Gui = Instance.new("ScreenGui")
@@ -39,6 +9,22 @@ Gui.IgnoreGuiInset = true
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 --==================================================
+-- COLORS
+--==================================================
+
+local BG = Color3.fromRGB(12, 12, 14)
+local PANEL = Color3.fromRGB(18, 18, 21)
+local CARD = Color3.fromRGB(27, 27, 31)
+local CARD2 = Color3.fromRGB(34, 34, 39)
+
+local ORANGE = Color3.fromRGB(255, 170, 15)
+local ORANGE_DARK = Color3.fromRGB(105, 72, 8)
+
+local WHITE = Color3.fromRGB(235, 235, 235)
+local GRAY = Color3.fromRGB(145, 145, 150)
+local PURPLE = Color3.fromRGB(165, 75, 255)
+
+--==================================================
 -- FOV CIRCLE
 --==================================================
 
@@ -46,11 +32,9 @@ local FOVCircle = Instance.new("Frame")
 FOVCircle.Name = "FOV"
 FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
 FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-FOVCircle.Size = UDim2.fromOffset(
-	Settings.FOV * 2,
-	Settings.FOV * 2
-)
+FOVCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
 FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = true
 FOVCircle.Parent = Gui
 
 local CircleCorner = Instance.new("UICorner")
@@ -59,7 +43,7 @@ CircleCorner.Parent = FOVCircle
 
 local CircleStroke = Instance.new("UIStroke")
 CircleStroke.Thickness = 2
-CircleStroke.Color = Color3.fromRGB(255, 255, 255)
+CircleStroke.Color = WHITE
 CircleStroke.Parent = FOVCircle
 
 --==================================================
@@ -67,62 +51,506 @@ CircleStroke.Parent = FOVCircle
 --==================================================
 
 local Panel = Instance.new("Frame")
-Panel.Name = "Panel"
-Panel.Size = UDim2.fromOffset(285, 390)
-Panel.Position = UDim2.new(0, 25, 0.5, -195)
-Panel.BackgroundColor3 = Color3.fromRGB(22, 20, 27)
-Panel.BackgroundTransparency = 0.08
+Panel.Name = "MainPanel"
+Panel.Size = UDim2.fromOffset(360, 470)
+Panel.Position = UDim2.new(0, 18, 0.5, -235)
+Panel.BackgroundColor3 = BG
 Panel.BorderSizePixel = 0
 Panel.Parent = Gui
 
-local PanelCorner = Instance.new("UICorner")
-PanelCorner.CornerRadius = UDim.new(0, 14)
-PanelCorner.Parent = Panel
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 12)
 
 local PanelStroke = Instance.new("UIStroke")
-PanelStroke.Color = Color3.fromRGB(80, 75, 90)
-PanelStroke.Transparency = 0.25
+PanelStroke.Color = Color3.fromRGB(45, 45, 48)
+PanelStroke.Thickness = 1
 PanelStroke.Parent = Panel
 
 --==================================================
--- TITLE
+-- TOP BAR
 --==================================================
 
+local Top = Instance.new("Frame")
+Top.Size = UDim2.new(1, 0, 0, 58)
+Top.BackgroundColor3 = PANEL
+Top.BorderSizePixel = 0
+Top.Parent = Panel
+
+local Logo = Instance.new("TextLabel")
+Logo.Size = UDim2.fromOffset(45, 50)
+Logo.Position = UDim2.fromOffset(10, 4)
+Logo.BackgroundTransparency = 1
+Logo.Text = "L"
+Logo.TextColor3 = ORANGE
+Logo.Font = Enum.Font.GothamBold
+Logo.TextSize = 34
+Logo.Parent = Top
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -55, 0, 45)
-Title.Position = UDim2.fromOffset(15, 5)
+Title.Size = UDim2.new(1, -110, 0, 28)
+Title.Position = UDim2.fromOffset(58, 7)
 Title.BackgroundTransparency = 1
 Title.Text = "AimAssist"
-Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextColor3 = ORANGE
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 19
+Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Panel
+Title.Parent = Top
+
+local Version = Instance.new("TextLabel")
+Version.Size = UDim2.new(1, -110, 0, 20)
+Version.Position = UDim2.fromOffset(58, 29)
+Version.BackgroundTransparency = 1
+Version.Text = "Mobile Edition"
+Version.TextColor3 = GRAY
+Version.Font = Enum.Font.Gotham
+Version.TextSize = 10
+Version.TextXAlignment = Enum.TextXAlignment.Left
+Version.Parent = Top
 
 local Close = Instance.new("TextButton")
-Close.Size = UDim2.fromOffset(34, 34)
-Close.Position = UDim2.new(1, -44, 0, 10)
-Close.BackgroundColor3 = Color3.fromRGB(45, 42, 52)
+Close.Size = UDim2.fromOffset(35, 35)
+Close.Position = UDim2.new(1, -45, 0, 11)
+Close.BackgroundColor3 = CARD2
 Close.Text = "×"
-Close.TextColor3 = Color3.new(1, 1, 1)
-Close.TextSize = 22
+Close.TextColor3 = WHITE
+Close.TextSize = 23
 Close.Font = Enum.Font.GothamBold
-Close.Parent = Panel
+Close.Parent = Top
 
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
 --==================================================
--- OPEN BUTTON
+-- TAB BAR
+--==================================================
+
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -24, 0, 43)
+TabBar.Position = UDim2.fromOffset(12, 65)
+TabBar.BackgroundTransparency = 1
+TabBar.Parent = Panel
+
+local LegitTab = Instance.new("TextButton")
+LegitTab.Size = UDim2.new(0.5, -5, 1, 0)
+LegitTab.Position = UDim2.fromOffset(0, 0)
+LegitTab.BackgroundTransparency = 1
+LegitTab.Text = "Legit"
+LegitTab.TextColor3 = WHITE
+LegitTab.Font = Enum.Font.GothamMedium
+LegitTab.TextSize = 16
+LegitTab.Parent = TabBar
+
+local LegitLine = Instance.new("Frame")
+LegitLine.Size = UDim2.new(1, -20, 0, 3)
+LegitLine.Position = UDim2.new(0, 10, 1, -3)
+LegitLine.BackgroundColor3 = ORANGE
+LegitLine.BorderSizePixel = 0
+LegitLine.Parent = LegitTab
+
+local SilentTab = Instance.new("TextButton")
+SilentTab.Size = UDim2.new(0.5, -5, 1, 0)
+SilentTab.Position = UDim2.new(0.5, 5, 0, 0)
+SilentTab.BackgroundTransparency = 1
+SilentTab.Text = "pSilent"
+SilentTab.TextColor3 = GRAY
+SilentTab.Font = Enum.Font.GothamMedium
+SilentTab.TextSize = 16
+SilentTab.Parent = TabBar
+
+local SilentLine = Instance.new("Frame")
+SilentLine.Size = UDim2.new(1, -20, 0, 3)
+SilentLine.Position = UDim2.new(0, 10, 1, -3)
+SilentLine.BackgroundColor3 = ORANGE
+SilentLine.BorderSizePixel = 0
+SilentLine.Visible = false
+SilentLine.Parent = SilentTab
+
+--==================================================
+-- CONTENT
+--==================================================
+
+local Content = Instance.new("ScrollingFrame")
+Content.Size = UDim2.new(1, -24, 1, -165)
+Content.Position = UDim2.fromOffset(12, 112)
+Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ScrollBarThickness = 3
+Content.ScrollBarImageColor3 = ORANGE
+Content.CanvasSize = UDim2.new(0, 0, 0, 600)
+Content.Parent = Panel
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0, 7)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Parent = Content
+
+--==================================================
+-- HELPERS
+--==================================================
+
+local function ComponentLabel(text)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, 0, 0, 24)
+	l.BackgroundTransparency = 1
+	l.Text = "◆  " .. text
+	l.TextColor3 = PURPLE
+	l.TextSize = 12
+	l.Font = Enum.Font.GothamBold
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Parent = Content
+	return l
+end
+
+local function Toggle(text, state, callback)
+
+	local Row = Instance.new("Frame")
+	Row.Size = UDim2.new(1, 0, 0, 48)
+	Row.BackgroundTransparency = 1
+	Row.Parent = Content
+
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1, -75, 1, 0)
+	Label.BackgroundTransparency = 1
+	Label.Text = text
+	Label.TextColor3 = WHITE
+	Label.TextSize = 14
+	Label.Font = Enum.Font.Gotham
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = Row
+
+	local Switch = Instance.new("TextButton")
+	Switch.Size = UDim2.fromOffset(58, 30)
+	Switch.Position = UDim2.new(1, -60, 0.5, -15)
+	Switch.Text = ""
+	Switch.BorderSizePixel = 0
+	Switch.Parent = Row
+
+	Instance.new("UICorner", Switch).CornerRadius = UDim.new(1, 0)
+
+	local Knob = Instance.new("Frame")
+	Knob.Size = UDim2.fromOffset(24, 24)
+	Knob.BorderSizePixel = 0
+	Knob.Parent = Switch
+
+	Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
+
+	local current = state
+
+	local function Update()
+		if current then
+			Switch.BackgroundColor3 = ORANGE_DARK
+			Knob.BackgroundColor3 = ORANGE
+			Knob.Position = UDim2.new(1, -27, 0.5, -12)
+		else
+			Switch.BackgroundColor3 = CARD2
+			Knob.BackgroundColor3 = Color3.fromRGB(110, 110, 115)
+			Knob.Position = UDim2.new(0, 3, 0.5, -12)
+		end
+	end
+
+	Switch.Activated:Connect(function()
+		current = not current
+		Update()
+		callback(current)
+	end)
+
+	Update()
+
+	return Row
+end
+
+local function Slider(text, min, max, default, callback)
+
+	local Frame = Instance.new("Frame")
+	Frame.Size = UDim2.new(1, 0, 0, 62)
+	Frame.BackgroundTransparency = 1
+	Frame.Parent = Content
+
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1, 0, 0, 25)
+	Label.BackgroundTransparency = 1
+	Label.Text = text .. " : " .. default
+	Label.TextColor3 = WHITE
+	Label.TextSize = 13
+	Label.Font = Enum.Font.Gotham
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.Parent = Frame
+
+	local Bar = Instance.new("Frame")
+	Bar.Size = UDim2.new(1, 0, 0, 7)
+	Bar.Position = UDim2.fromOffset(0, 38)
+	Bar.BackgroundColor3 = CARD2
+	Bar.BorderSizePixel = 0
+	Bar.Parent = Frame
+
+	Instance.new("UICorner", Bar).CornerRadius = UDim.new(1, 0)
+
+	local Fill = Instance.new("Frame")
+	Fill.Size = UDim2.new(
+		(default - min) / (max - min),
+		0,
+		1,
+		0
+	)
+	Fill.BackgroundColor3 = ORANGE
+	Fill.BorderSizePixel = 0
+	Fill.Parent = Bar
+
+	Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+
+	local dragging = false
+
+	local function Update(x)
+
+		local percent = math.clamp(
+			(x - Bar.AbsolutePosition.X) /
+			Bar.AbsoluteSize.X,
+			0,
+			1
+		)
+
+		local value = math.floor(
+			min + ((max - min) * percent)
+		)
+
+		Fill.Size = UDim2.new(percent, 0, 1, 0)
+		Label.Text = text .. " : " .. value
+
+		callback(value)
+	end
+
+	Bar.InputBegan:Connect(function(input)
+
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+			dragging = true
+			Update(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+
+		if not dragging then
+			return
+		end
+
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseMovement then
+
+			Update(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+
+		if input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+			dragging = false
+		end
+	end)
+
+	return Frame
+end
+
+local function Dropdown(text, options, default, callback)
+
+	local current = default
+
+	local Button = Instance.new("TextButton")
+	Button.Size = UDim2.new(1, 0, 0, 45)
+	Button.BackgroundColor3 = CARD
+	Button.BorderSizePixel = 0
+	Button.Text = text .. "        " .. current
+	Button.TextColor3 = WHITE
+	Button.TextSize = 13
+	Button.Font = Enum.Font.Gotham
+	Button.TextXAlignment = Enum.TextXAlignment.Left
+	Button.Parent = Content
+
+	Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 8)
+
+	Button.Activated:Connect(function()
+
+		local index = table.find(options, current) or 1
+
+		index += 1
+
+		if index > #options then
+			index = 1
+		end
+
+		current = options[index]
+
+		Button.Text = text .. "        " .. current
+
+		callback(current)
+	end)
+
+	return Button
+end
+
+--==================================================
+-- AIMBOT PAGE
+--==================================================
+
+ComponentLabel("Component 1")
+
+Toggle("Aim", Settings.Enabled, function(value)
+	Settings.Enabled = value
+
+	if not value then
+		Target = nil
+	end
+end)
+
+ComponentLabel("Component 2")
+
+Toggle("Show Range", true, function(value)
+	FOVCircle.Visible = value
+end)
+
+Toggle("Target Lock", Settings.TargetLock, function(value)
+	Settings.TargetLock = value
+end)
+
+Toggle("Wall Check", Settings.WallCheck, function(value)
+	Settings.WallCheck = value
+end)
+
+Toggle("Team Check", Settings.TeamCheck, function(value)
+	Settings.TeamCheck = value
+end)
+
+ComponentLabel("Aim Settings")
+
+Slider(
+	"FOV",
+	50,
+	500,
+	Settings.FOV,
+	function(value)
+		Settings.FOV = value
+	end
+)
+
+Slider(
+	"Smoothness",
+	10,
+	100,
+	Settings.Smoothness,
+	function(value)
+		Settings.Smoothness = value
+	end
+)
+
+Dropdown(
+	"Bone",
+	{
+		"Head",
+		"Torso",
+		"HumanoidRootPart"
+	},
+	"Head",
+	function(value)
+		Settings.HitPart = value
+	end
+)
+
+--==================================================
+-- BOTTOM NAVIGATION
+--==================================================
+
+local Bottom = Instance.new("Frame")
+Bottom.Size = UDim2.new(1, 0, 0, 53)
+Bottom.Position = UDim2.new(0, 0, 1, -53)
+Bottom.BackgroundColor3 = PANEL
+Bottom.BorderSizePixel = 0
+Bottom.Parent = Panel
+
+local NavNames = {
+	"AIMBOT",
+	"VISUALS",
+	"WEAPON",
+	"MISC",
+	"SETTINGS"
+}
+
+local NavSymbols = {
+	"◎",
+	"◉",
+	"▰",
+	"•••",
+	"⚙"
+}
+
+for i, name in ipairs(NavNames) do
+
+	local Button = Instance.new("TextButton")
+	Button.Size = UDim2.new(0.2, 0, 1, 0)
+	Button.Position = UDim2.new((i - 1) * 0.2, 0, 0, 0)
+	Button.BackgroundTransparency = 1
+	Button.Text = NavSymbols[i] .. "\n" .. name
+	Button.TextColor3 = i == 1 and ORANGE or GRAY
+	Button.TextSize = 10
+	Button.Font = Enum.Font.GothamMedium
+	Button.Parent = Bottom
+
+	Button.Activated:Connect(function()
+
+		for _, child in ipairs(Bottom:GetChildren()) do
+			if child:IsA("TextButton") then
+				child.TextColor3 = GRAY
+			end
+		end
+
+		Button.TextColor3 = ORANGE
+
+		-- Only Aimbot is implemented in this script.
+		if i ~= 1 then
+			Button.TextColor3 = GRAY
+		end
+	end)
+end
+
+--==================================================
+-- TAB SWITCHING
+--==================================================
+
+LegitTab.Activated:Connect(function()
+
+	LegitTab.TextColor3 = WHITE
+	SilentTab.TextColor3 = GRAY
+
+	LegitLine.Visible = true
+	SilentLine.Visible = false
+
+	Content.Visible = true
+end)
+
+SilentTab.Activated:Connect(function()
+
+	SilentTab.TextColor3 = WHITE
+	LegitTab.TextColor3 = GRAY
+
+	LegitLine.Visible = false
+	SilentLine.Visible = true
+
+	-- No silent-aim implementation here.
+	-- This tab is UI-only.
+end)
+
+--==================================================
+-- OPEN / CLOSE
 --==================================================
 
 local Open = Instance.new("TextButton")
-Open.Size = UDim2.fromOffset(48, 48)
-Open.Position = UDim2.fromOffset(20, 20)
-Open.BackgroundColor3 = Color3.fromRGB(25, 23, 30)
-Open.BackgroundTransparency = 0.05
-Open.Text = "☰"
-Open.TextColor3 = Color3.new(1, 1, 1)
-Open.TextSize = 21
+Open.Size = UDim2.fromOffset(52, 52)
+Open.Position = UDim2.fromOffset(18, 18)
+Open.BackgroundColor3 = PANEL
+Open.Text = "L"
+Open.TextColor3 = ORANGE
+Open.TextSize = 26
 Open.Font = Enum.Font.GothamBold
 Open.Visible = false
 Open.Parent = Gui
@@ -140,480 +568,17 @@ Open.Activated:Connect(function()
 end)
 
 --==================================================
--- UI HELPERS
---==================================================
-
-local Y = 58
-
-local function Button(text)
-	local b = Instance.new("TextButton")
-
-	b.Size = UDim2.new(1, -30, 0, 40)
-	b.Position = UDim2.fromOffset(15, Y)
-	b.BackgroundColor3 = Color3.fromRGB(40, 37, 47)
-	b.BorderSizePixel = 0
-	b.Text = text
-	b.TextColor3 = Color3.new(1, 1, 1)
-	b.TextSize = 13
-	b.Font = Enum.Font.GothamSemibold
-	b.Parent = Panel
-
-	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
-
-	Y += 47
-
-	return b
-end
-
-local function Label(text)
-	local l = Instance.new("TextLabel")
-
-	l.Size = UDim2.new(1, -30, 0, 23)
-	l.Position = UDim2.fromOffset(15, Y)
-	l.BackgroundTransparency = 1
-	l.Text = text
-	l.TextColor3 = Color3.fromRGB(205, 202, 215)
-	l.TextSize = 12
-	l.Font = Enum.Font.Gotham
-	l.TextXAlignment = Enum.TextXAlignment.Left
-	l.Parent = Panel
-
-	Y += 27
-
-	return l
-end
-
---==================================================
--- AIM TOGGLE
---==================================================
-
-local AimButton = Button("Aim Assist : OFF")
-
-local function UpdateAimButton()
-	if Settings.Enabled then
-		AimButton.Text = "Aim Assist : ON"
-		AimButton.BackgroundColor3 = Color3.fromRGB(45, 135, 75)
-	else
-		AimButton.Text = "Aim Assist : OFF"
-		AimButton.BackgroundColor3 = Color3.fromRGB(40, 37, 47)
-	end
-end
-
-AimButton.Activated:Connect(function()
-	Settings.Enabled = not Settings.Enabled
-
-	if not Settings.Enabled then
-		Target = nil
-	end
-
-	UpdateAimButton()
-end)
-
---==================================================
--- TARGET LOCK
---==================================================
-
-local LockButton = Button("Target Lock : ON")
-
-LockButton.Activated:Connect(function()
-	Settings.TargetLock = not Settings.TargetLock
-
-	LockButton.Text =
-		"Target Lock : " ..
-		(Settings.TargetLock and "ON" or "OFF")
-end)
-
---==================================================
--- WALL CHECK
---==================================================
-
-local WallButton = Button("Wall Check : ON")
-
-WallButton.Activated:Connect(function()
-	Settings.WallCheck = not Settings.WallCheck
-
-	WallButton.Text =
-		"Wall Check : " ..
-		(Settings.WallCheck and "ON" or "OFF")
-end)
-
---==================================================
--- TEAM CHECK
---==================================================
-
-local TeamButton = Button("Team Check : ON")
-
-TeamButton.Activated:Connect(function()
-	Settings.TeamCheck = not Settings.TeamCheck
-
-	TeamButton.Text =
-		"Team Check : " ..
-		(Settings.TeamCheck and "ON" or "OFF")
-end)
-
---==================================================
--- HIT PART
---==================================================
-
-local HitButton = Button("Hit Part : Head")
-
-local HitParts = {
-	"Head",
-	"Torso",
-	"HumanoidRootPart"
-}
-
-local HitIndex = 1
-
-HitButton.Activated:Connect(function()
-	HitIndex += 1
-
-	if HitIndex > #HitParts then
-		HitIndex = 1
-	end
-
-	Settings.HitPart = HitParts[HitIndex]
-	HitButton.Text = "Hit Part : " .. Settings.HitPart
-end)
-
---==================================================
--- FOV SLIDER
---==================================================
-
-local FOVLabel = Label("FOV : 250")
-
-local FOVBar = Instance.new("Frame")
-FOVBar.Size = UDim2.new(1, -30, 0, 8)
-FOVBar.Position = UDim2.fromOffset(15, Y)
-FOVBar.BackgroundColor3 = Color3.fromRGB(55, 52, 63)
-FOVBar.BorderSizePixel = 0
-FOVBar.Parent = Panel
-
-Instance.new("UICorner", FOVBar).CornerRadius = UDim.new(1, 0)
-
-local FOVFill = Instance.new("Frame")
-FOVFill.Size = UDim2.new(
-	Settings.FOV / 500,
-	0,
-	1,
-	0
-)
-FOVFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-FOVFill.BorderSizePixel = 0
-FOVFill.Parent = FOVBar
-
-Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
-
-Y += 25
-
---==================================================
--- SMOOTHNESS SLIDER
---==================================================
-
-local SmoothLabel = Label("Smoothness : 85")
-
-local SmoothBar = Instance.new("Frame")
-SmoothBar.Size = UDim2.new(1, -30, 0, 8)
-SmoothBar.Position = UDim2.fromOffset(15, Y)
-SmoothBar.BackgroundColor3 = Color3.fromRGB(55, 52, 63)
-SmoothBar.BorderSizePixel = 0
-SmoothBar.Parent = Panel
-
-Instance.new("UICorner", SmoothBar).CornerRadius = UDim.new(1, 0)
-
-local SmoothFill = Instance.new("Frame")
-SmoothFill.Size = UDim2.new(
-	Settings.Smoothness / 100,
-	0,
-	1,
-	0
-)
-SmoothFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-SmoothFill.BorderSizePixel = 0
-SmoothFill.Parent = SmoothBar
-
-Instance.new("UICorner", SmoothFill).CornerRadius = UDim.new(1, 0)
-
---==================================================
--- SLIDER SYSTEM
---==================================================
-
-local function Slider(bar, fill, min, max, callback)
-	local dragging = false
-
-	local function update(x)
-		local percent = math.clamp(
-			(x - bar.AbsolutePosition.X)
-			/ bar.AbsoluteSize.X,
-			0,
-			1
-		)
-
-		local value = math.floor(
-			min + ((max - min) * percent)
-		)
-
-		fill.Size = UDim2.new(percent, 0, 1, 0)
-
-		callback(value)
-	end
-
-	bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-
-			dragging = true
-			update(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging then
-			if input.UserInputType == Enum.UserInputType.MouseMovement
-				or input.UserInputType == Enum.UserInputType.Touch then
-
-				update(input.Position.X)
-			end
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-
-			dragging = false
-		end
-	end)
-end
-
-Slider(FOVBar, FOVFill, 50, 500, function(value)
-	Settings.FOV = value
-	FOVLabel.Text = "FOV : " .. value
-end)
-
-Slider(SmoothBar, SmoothFill, 10, 100, function(value)
-	Settings.Smoothness = value
-	SmoothLabel.Text = "Smoothness : " .. value
-end)
-
---==================================================
--- TARGET PART
---==================================================
-
-local function GetPart(character)
-	if Settings.HitPart == "Head" then
-		return character:FindFirstChild("Head")
-	end
-
-	if Settings.HitPart == "Torso" then
-		return character:FindFirstChild("UpperTorso")
-			or character:FindFirstChild("Torso")
-			or character:FindFirstChild("LowerTorso")
-	end
-
-	return character:FindFirstChild("HumanoidRootPart")
-end
-
---==================================================
--- VALID TARGET
---==================================================
-
-local function ValidPlayer(plr)
-	if plr == LocalPlayer then
-		return false
-	end
-
-	if Settings.TeamCheck
-		and LocalPlayer.Team ~= nil
-		and plr.Team == LocalPlayer.Team then
-
-		return false
-	end
-
-	local character = plr.Character
-
-	if not character then
-		return false
-	end
-
-	local humanoid =
-		character:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid or humanoid.Health <= 0 then
-		return false
-	end
-
-	return GetPart(character) ~= nil
-end
-
---==================================================
--- VISIBILITY
---==================================================
-
-local function Visible(part, character)
-	if not Settings.WallCheck then
-		return true
-	end
-
-	local origin = Camera.CFrame.Position
-	local direction = part.Position - origin
-
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {
-		LocalPlayer.Character,
-		Camera
-	}
-
-	local result = workspace:Raycast(
-		origin,
-		direction,
-		params
-	)
-
-	if not result then
-		return true
-	end
-
-	return result.Instance:IsDescendantOf(character)
-end
-
---==================================================
--- FIND TARGET
---==================================================
-
-local function FindTarget()
-	local best = nil
-	local bestDistance = Settings.FOV
-
-	local center = Vector2.new(
-		Camera.ViewportSize.X / 2,
-		Camera.ViewportSize.Y / 2
-	)
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if ValidPlayer(plr) then
-
-			local character = plr.Character
-			local part = GetPart(character)
-
-			if part then
-				local point, onscreen =
-					Camera:WorldToViewportPoint(part.Position)
-
-				if onscreen and point.Z > 0 then
-
-					local distance =
-						(Vector2.new(point.X, point.Y) - center).Magnitude
-
-					if distance <= bestDistance
-						and Visible(part, character) then
-
-						bestDistance = distance
-						best = plr
-					end
-				end
-			end
-		end
-	end
-
-	return best
-end
-
---==================================================
--- AIM
---==================================================
-
-local function AimAt(part)
-	local velocity = part.AssemblyLinearVelocity
-
-	local predicted =
-		part.Position +
-		(velocity * Settings.Prediction)
-
-	local desired =
-		CFrame.lookAt(
-			Camera.CFrame.Position,
-			predicted
-		)
-
-	local alpha =
-		0.05 +
-		(Settings.Smoothness / 100) * 0.95
-
-	Camera.CFrame =
-		Camera.CFrame:Lerp(
-			desired,
-			math.clamp(alpha, 0, 1)
-		)
-end
-
---==================================================
--- MAIN LOOP
---==================================================
-
-RunService:BindToRenderStep(
-	"AimAssistUpdate",
-	Enum.RenderPriority.Camera.Value + 1,
-	function()
-
-		-- FOV always remains visible
-		FOVCircle.Size = UDim2.fromOffset(
-			Settings.FOV * 2,
-			Settings.FOV * 2
-		)
-
-		if not Settings.Enabled then
-			Target = nil
-			CircleStroke.Color =
-				Color3.fromRGB(255, 255, 255)
-			return
-		end
-
-		if not Settings.TargetLock
-			or not Target
-			or not ValidPlayer(Target) then
-
-			Target = FindTarget()
-		end
-
-		if not Target then
-			CircleStroke.Color =
-				Color3.fromRGB(255, 255, 255)
-			return
-		end
-
-		local character = Target.Character
-		local part = GetPart(character)
-
-		if not part then
-			Target = nil
-			return
-		end
-
-		if not Visible(part, character) then
-			Target = nil
-			return
-		end
-
-		CircleStroke.Color =
-			Color3.fromRGB(50, 255, 100)
-
-		AimAt(part)
-	end
-)
-
---==================================================
--- DRAG PANEL
+-- DRAG / MOVE PANEL
 --==================================================
 
 local dragging = false
 local dragStart
 local panelStart
 
-Title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
+Top.InputBegan:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
 		dragging = true
 		dragStart = input.Position
@@ -622,12 +587,13 @@ Title.InputBegan:Connect(function(input)
 end)
 
 UserInputService.InputChanged:Connect(function(input)
+
 	if not dragging then
 		return
 	end
 
-	if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseMovement then
 
 		local delta = input.Position - dragStart
 
@@ -641,8 +607,9 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
+
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
 		dragging = false
 	end
