@@ -1,30 +1,24 @@
---========================================================
--- STRONG AIM ASSIST - OWN ROBLOX EXPERIENCE
---========================================================
+--// AimAssist - Expanded test2.lua
+--// For your own Roblox game / private testing
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
---========================================================
+--==================================================
 -- SETTINGS
---========================================================
+--==================================================
 
 local AimEnabled = false
-local TargetLock = false
+local TargetLock = true
 local WallCheck = true
 local TeamCheck = true
 
 local FOV = 250
 local Smoothness = 100
-
--- Strong tracking
-local AimStrength = 100
-
--- Small amount of movement prediction
 local Prediction = 0.08
 
 local HitParts = {
@@ -34,622 +28,690 @@ local HitParts = {
 }
 
 local HitPartIndex = 1
-local Target = nil
+local CurrentTarget = nil
 
---========================================================
+--==================================================
 -- GUI
---========================================================
+--==================================================
 
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "StrongAimAssist"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local gui = Instance.new("ScreenGui")
+gui.Name = "AimAssist"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = player:WaitForChild("PlayerGui")
 
---========================================================
--- MAIN UI
---========================================================
+--==================================================
+-- FOV CIRCLE
+--==================================================
 
-local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(285, 390)
-Main.Position = UDim2.new(0, 20, 0.5, -195)
-Main.BackgroundColor3 = Color3.fromRGB(24,24,28)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Parent = GUI
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FOVCircle"
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Position = UDim2.fromScale(0.5, 0.5)
+fovCircle.Size = UDim2.fromOffset(FOV * 2, FOV * 2)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Parent = gui
 
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0,14)
-Corner.Parent = Main
+local circleCorner = Instance.new("UICorner")
+circleCorner.CornerRadius = UDim.new(1, 0)
+circleCorner.Parent = fovCircle
 
---========================================================
--- OPEN BUTTON
---========================================================
+local circleStroke = Instance.new("UIStroke")
+circleStroke.Thickness = 2
+circleStroke.Color = Color3.new(1, 1, 1)
+circleStroke.Transparency = 0
+circleStroke.Parent = fovCircle
 
-local OpenButton = Instance.new("TextButton")
-OpenButton.Size = UDim2.fromOffset(50,50)
-OpenButton.Position = UDim2.fromOffset(15,15)
-OpenButton.BackgroundColor3 = Color3.fromRGB(25,25,30)
-OpenButton.Text = "☰"
-OpenButton.TextColor3 = Color3.new(1,1,1)
-OpenButton.TextSize = 25
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.Visible = false
-OpenButton.Parent = GUI
+--==================================================
+-- MAIN WINDOW
+--==================================================
 
-local OpenCorner = Instance.new("UICorner")
-OpenCorner.CornerRadius = UDim.new(1,0)
-OpenCorner.Parent = OpenButton
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.fromOffset(300, 430)
+main.Position = UDim2.new(0, 20, 0.5, -215)
+main.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+main.BorderSizePixel = 0
+main.Parent = gui
 
---========================================================
--- CLOSE BUTTON
---========================================================
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = main
 
-local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.fromOffset(32,32)
-CloseButton.Position = UDim2.new(1,-40,0,8)
-CloseButton.BackgroundColor3 = Color3.fromRGB(55,55,60)
-CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.new(1,1,1)
-CloseButton.TextSize = 22
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Parent = Main
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(65, 65, 70)
+stroke.Thickness = 1
+stroke.Parent = main
 
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(1,0)
-CloseCorner.Parent = CloseButton
-
-CloseButton.Activated:Connect(function()
-	Main.Visible = false
-	OpenButton.Visible = true
-end)
-
-OpenButton.Activated:Connect(function()
-	Main.Visible = true
-	OpenButton.Visible = false
-end)
-
---========================================================
+--==================================================
 -- TITLE
---========================================================
+--==================================================
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1,-55,0,42)
-Title.Position = UDim2.fromOffset(10,4)
-Title.BackgroundTransparency = 1
-Title.Text = "AIM ASSIST"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.TextSize = 20
-Title.Font = Enum.Font.GothamBold
-Title.Parent = Main
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -55, 0, 45)
+title.Position = UDim2.fromOffset(15, 5)
+title.BackgroundTransparency = 1
+title.Text = "AimAssist"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
 
---========================================================
--- BUTTON FUNCTION
---========================================================
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.fromOffset(35, 35)
+closeButton.Position = UDim2.new(1, -43, 0, 10)
+closeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 48)
+closeButton.Text = "×"
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.TextSize = 24
+closeButton.Font = Enum.Font.GothamBold
+closeButton.Parent = main
 
-local function Button(text,y)
+Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 8)
 
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1,-24,0,38)
-	b.Position = UDim2.fromOffset(12,y)
-	b.BackgroundColor3 = Color3.fromRGB(48,48,53)
-	b.BorderSizePixel = 0
-	b.Text = text
-	b.TextColor3 = Color3.new(1,1,1)
-	b.TextSize = 14
-	b.Font = Enum.Font.GothamMedium
-	b.Parent = Main
+--==================================================
+-- OPEN BUTTON
+--==================================================
 
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0,8)
-	c.Parent = b
+local openButton = Instance.new("TextButton")
+openButton.Size = UDim2.fromOffset(50, 50)
+openButton.Position = UDim2.fromOffset(20, 20)
+openButton.BackgroundColor3 = Color3.fromRGB(35, 35, 38)
+openButton.Text = "☰"
+openButton.TextColor3 = Color3.new(1, 1, 1)
+openButton.TextSize = 22
+openButton.Font = Enum.Font.GothamBold
+openButton.Visible = false
+openButton.Parent = gui
 
-	return b
+Instance.new("UICorner", openButton).CornerRadius = UDim.new(0, 10)
+
+closeButton.Activated:Connect(function()
+	main.Visible = false
+	openButton.Visible = true
+end)
+
+openButton.Activated:Connect(function()
+	main.Visible = true
+	openButton.Visible = false
+end)
+
+--==================================================
+-- UI HELPER
+--==================================================
+
+local y = 55
+
+local function makeButton(text)
+	local button = Instance.new("TextButton")
+
+	button.Size = UDim2.new(1, -30, 0, 42)
+	button.Position = UDim2.fromOffset(15, y)
+
+	button.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+	button.TextColor3 = Color3.new(1, 1, 1)
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 14
+	button.Text = text
+
+	button.AutoButtonColor = true
+	button.Parent = main
+
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+
+	y += 48
+
+	return button
 end
 
-local AimButton = Button("Aim Assist: OFF",48)
-local LockButton = Button("Target Lock: OFF",92)
-local WallButton = Button("Wall Check: ON",136)
-local TeamButton = Button("Team Check: ON",180)
-local HitButton = Button("Hit Part: Head",224)
-
---========================================================
--- SLIDER
---========================================================
-
-local function Slider(name,y,min,max,default)
-
+local function makeLabel(text)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1,-24,0,20)
-	label.Position = UDim2.fromOffset(12,y)
+
+	label.Size = UDim2.new(1, -30, 0, 25)
+	label.Position = UDim2.fromOffset(15, y)
+
 	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.fromRGB(230,230,230)
+	label.TextColor3 = Color3.fromRGB(220, 220, 220)
+	label.Text = text
 	label.TextSize = 13
 	label.Font = Enum.Font.Gotham
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = Main
 
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1,-24,0,8)
-	bar.Position = UDim2.fromOffset(12,y+25)
-	bar.BackgroundColor3 = Color3.fromRGB(65,65,70)
-	bar.BorderSizePixel = 0
-	bar.Active = true
-	bar.Parent = Main
+	label.Parent = main
 
-	local bc = Instance.new("UICorner")
-	bc.CornerRadius = UDim.new(1,0)
-	bc.Parent = bar
+	y += 28
 
-	local fill = Instance.new("Frame")
-	fill.BackgroundColor3 = Color3.fromRGB(70,150,255)
-	fill.BorderSizePixel = 0
-	fill.Parent = bar
-
-	local fc = Instance.new("UICorner")
-	fc.CornerRadius = UDim.new(1,0)
-	fc.Parent = fill
-
-	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(14,14)
-	knob.AnchorPoint = Vector2.new(.5,.5)
-	knob.BackgroundColor3 = Color3.new(1,1,1)
-	knob.BorderSizePixel = 0
-	knob.Parent = bar
-
-	local kc = Instance.new("UICorner")
-	kc.CornerRadius = UDim.new(1,0)
-	kc.Parent = knob
-
-	local value = default
-	local dragging = false
-
-	local function Set(v)
-
-		value = math.clamp(math.round(v),min,max)
-
-		local p = (value-min)/(max-min)
-
-		fill.Size = UDim2.new(p,0,1,0)
-		knob.Position = UDim2.new(p,0,.5,0)
-
-		label.Text = name .. ": " .. value
-	end
-
-	local function InputToValue(input)
-
-		local x = input.Position.X
-		local start = bar.AbsolutePosition.X
-		local width = bar.AbsoluteSize.X
-
-		local p = math.clamp((x-start)/width,0,1)
-
-		Set(min+(max-min)*p)
-	end
-
-	bar.InputBegan:Connect(function(input)
-
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-
-			dragging = true
-			InputToValue(input)
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-
-		if not dragging then return end
-
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
-
-			InputToValue(input)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-
-			dragging = false
-		end
-	end)
-
-	Set(default)
-
-	return function()
-		return value
-	end
+	return label
 end
 
-local GetFOV = Slider("FOV",272,50,500,FOV)
-local GetSmoothness = Slider("Smoothness",322,10,100,Smoothness)
+--==================================================
+-- AIM TOGGLE
+--==================================================
 
---========================================================
--- PERMANENT FOV CIRCLE
---========================================================
+local aimButton = makeButton("Aim Assist: OFF")
 
-local Circle = Instance.new("Frame")
-Circle.AnchorPoint = Vector2.new(.5,.5)
-Circle.Position = UDim2.fromScale(.5,.5)
-Circle.Size = UDim2.fromOffset(FOV*2,FOV*2)
-Circle.BackgroundTransparency = 1
-Circle.BorderSizePixel = 0
-Circle.Parent = GUI
+aimButton.Activated:Connect(function()
+	AimEnabled = not AimEnabled
 
-local CircleCorner = Instance.new("UICorner")
-CircleCorner.CornerRadius = UDim.new(1,0)
-CircleCorner.Parent = Circle
+	if AimEnabled then
+		aimButton.Text = "Aim Assist: ON"
+		aimButton.BackgroundColor3 = Color3.fromRGB(40, 150, 75)
+	else
+		aimButton.Text = "Aim Assist: OFF"
+		aimButton.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+		CurrentTarget = nil
+	end
+end)
 
-local CircleStroke = Instance.new("UIStroke")
-CircleStroke.Thickness = 2
-CircleStroke.Transparency = .1
-CircleStroke.Color = Color3.new(1,1,1)
-CircleStroke.Parent = Circle
+--==================================================
+-- TARGET LOCK
+--==================================================
 
---========================================================
+local lockButton = makeButton("Target Lock: ON")
+
+lockButton.Activated:Connect(function()
+	TargetLock = not TargetLock
+
+	if TargetLock then
+		lockButton.Text = "Target Lock: ON"
+		lockButton.BackgroundColor3 = Color3.fromRGB(40, 150, 75)
+	else
+		lockButton.Text = "Target Lock: OFF"
+		lockButton.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+		CurrentTarget = nil
+	end
+end)
+
+--==================================================
+-- WALL CHECK
+--==================================================
+
+local wallButton = makeButton("Wall Check: ON")
+
+wallButton.Activated:Connect(function()
+	WallCheck = not WallCheck
+
+	if WallCheck then
+		wallButton.Text = "Wall Check: ON"
+		wallButton.BackgroundColor3 = Color3.fromRGB(40, 150, 75)
+	else
+		wallButton.Text = "Wall Check: OFF"
+		wallButton.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+	end
+end)
+
+--==================================================
+-- TEAM CHECK
+--==================================================
+
+local teamButton = makeButton("Team Check: ON")
+
+teamButton.Activated:Connect(function()
+	TeamCheck = not TeamCheck
+
+	if TeamCheck then
+		teamButton.Text = "Team Check: ON"
+		teamButton.BackgroundColor3 = Color3.fromRGB(40, 150, 75)
+	else
+		teamButton.Text = "Team Check: OFF"
+		teamButton.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+	end
+end)
+
+--==================================================
 -- HIT PART
---========================================================
+--==================================================
 
-local function GetHitPart(character)
+local hitButton = makeButton("Hit Part: Head")
 
+local function getHitPart(character)
 	local selected = HitParts[HitPartIndex]
 
 	if selected == "Head" then
 		return character:FindFirstChild("Head")
+	end
 
-	elseif selected == "Torso" then
-
-		return character:FindFirstChild("Torso")
-			or character:FindFirstChild("UpperTorso")
+	if selected == "Torso" then
+		return character:FindFirstChild("UpperTorso")
+			or character:FindFirstChild("Torso")
 			or character:FindFirstChild("LowerTorso")
+	end
 
-	elseif selected == "HumanoidRootPart" then
+	if selected == "HumanoidRootPart" then
 		return character:FindFirstChild("HumanoidRootPart")
 	end
 end
 
---========================================================
--- VALID TARGET
---========================================================
-
-local function IsValidTarget(player)
-
-	if not player or player == LocalPlayer then
-		return false
-	end
-
-	local character = player.Character
-
-	if not character then
-		return false
-	end
-
-	local humanoid =
-		character:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid or humanoid.Health <= 0 then
-		return false
-	end
-
-	if TeamCheck
-		and LocalPlayer.Team
-		and player.Team
-		and LocalPlayer.Team == player.Team then
-
-		return false
-	end
-
-	local part = GetHitPart(character)
-
-	if not part then
-		return false
-	end
-
-	-- Wall check
-	if WallCheck then
-
-		local origin = Camera.CFrame.Position
-		local direction = part.Position - origin
-
-		local params = RaycastParams.new()
-
-		params.FilterType =
-			Enum.RaycastFilterType.Exclude
-
-		params.FilterDescendantsInstances = {
-			LocalPlayer.Character
-		}
-
-		local result =
-			workspace:Raycast(
-				origin,
-				direction,
-				params
-			)
-
-		if result
-			and not result.Instance:IsDescendantOf(character) then
-
-			return false
-		end
-	end
-
-	return true
-end
-
---========================================================
--- TARGET SEARCH
---========================================================
-
-local function GetTarget()
-
-	local best = nil
-	local bestDistance = GetFOV()
-
-	local center = Vector2.new(
-		Camera.ViewportSize.X/2,
-		Camera.ViewportSize.Y/2
-	)
-
-	for _,player in ipairs(Players:GetPlayers()) do
-
-		if IsValidTarget(player) then
-
-			local part =
-				GetHitPart(player.Character)
-
-			if part then
-
-				local position,visible =
-					Camera:WorldToViewportPoint(
-						part.Position
-					)
-
-				if visible and position.Z > 0 then
-
-					local screen =
-						Vector2.new(
-							position.X,
-							position.Y
-						)
-
-					local distance =
-						(screen-center).Magnitude
-
-					if distance <= bestDistance then
-
-						bestDistance = distance
-						best = player
-					end
-				end
-			end
-		end
-	end
-
-	return best
-end
-
---========================================================
--- BUTTONS
---========================================================
-
-AimButton.Activated:Connect(function()
-
-	AimEnabled = not AimEnabled
-
-	if AimEnabled then
-
-		AimButton.Text = "Aim Assist: ON"
-		AimButton.BackgroundColor3 =
-			Color3.fromRGB(40,140,75)
-
-	else
-
-		AimButton.Text = "Aim Assist: OFF"
-		AimButton.BackgroundColor3 =
-			Color3.fromRGB(48,48,53)
-
-		Target = nil
-	end
-end)
-
-LockButton.Activated:Connect(function()
-
-	TargetLock = not TargetLock
-
-	if TargetLock then
-
-		LockButton.Text = "Target Lock: ON"
-		LockButton.BackgroundColor3 =
-			Color3.fromRGB(40,140,75)
-
-		Target = GetTarget()
-
-	else
-
-		LockButton.Text = "Target Lock: OFF"
-		LockButton.BackgroundColor3 =
-			Color3.fromRGB(48,48,53)
-
-		Target = nil
-	end
-end)
-
-WallButton.Activated:Connect(function()
-
-	WallCheck = not WallCheck
-
-	WallButton.Text =
-		WallCheck and
-		"Wall Check: ON" or
-		"Wall Check: OFF"
-
-	WallButton.BackgroundColor3 =
-		WallCheck and
-		Color3.fromRGB(40,140,75) or
-		Color3.fromRGB(48,48,53)
-
-	Target = nil
-end)
-
-TeamButton.Activated:Connect(function()
-
-	TeamCheck = not TeamCheck
-
-	TeamButton.Text =
-		TeamCheck and
-		"Team Check: ON" or
-		"Team Check: OFF"
-
-	TeamButton.BackgroundColor3 =
-		TeamCheck and
-		Color3.fromRGB(40,140,75) or
-		Color3.fromRGB(48,48,53)
-
-	Target = nil
-end)
-
-HitButton.Activated:Connect(function()
-
+hitButton.Activated:Connect(function()
 	HitPartIndex += 1
 
 	if HitPartIndex > #HitParts then
 		HitPartIndex = 1
 	end
 
-	HitButton.Text =
-		"Hit Part: " ..
-		HitParts[HitPartIndex]
-
-	Target = nil
+	hitButton.Text = "Hit Part: " .. HitParts[HitPartIndex]
 end)
 
---========================================================
--- STRONG AIM LOOP
---========================================================
+--==================================================
+-- FOV
+--==================================================
+
+local fovLabel = makeLabel("FOV: 250")
+
+local fovBack = Instance.new("Frame")
+fovBack.Size = UDim2.new(1, -30, 0, 8)
+fovBack.Position = UDim2.fromOffset(15, y)
+fovBack.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+fovBack.Parent = main
+
+Instance.new("UICorner", fovBack).CornerRadius = UDim.new(1, 0)
+
+local fovFill = Instance.new("Frame")
+fovFill.Size = UDim2.new(FOV / 500, 0, 1, 0)
+fovFill.BackgroundColor3 = Color3.fromRGB(70, 150, 255)
+fovFill.Parent = fovBack
+
+Instance.new("UICorner", fovFill).CornerRadius = UDim.new(1, 0)
+
+y += 22
+
+--==================================================
+-- SMOOTHNESS
+--==================================================
+
+local smoothLabel = makeLabel("Smoothness: 100")
+
+local smoothBack = Instance.new("Frame")
+smoothBack.Size = UDim2.new(1, -30, 0, 8)
+smoothBack.Position = UDim2.fromOffset(15, y)
+smoothBack.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+smoothBack.Parent = main
+
+Instance.new("UICorner", smoothBack).CornerRadius = UDim.new(1, 0)
+
+local smoothFill = Instance.new("Frame")
+smoothFill.Size = UDim2.new(Smoothness / 100, 0, 1, 0)
+smoothFill.BackgroundColor3 = Color3.fromRGB(70, 150, 255)
+smoothFill.Parent = smoothBack
+
+Instance.new("UICorner", smoothFill).CornerRadius = UDim.new(1, 0)
+
+y += 30
+
+--==================================================
+-- SLIDER FUNCTION
+--==================================================
+
+local function setupSlider(back, fill, label, minValue, maxValue, setter)
+	local dragging = false
+
+	local function update(input)
+		local percent =
+			math.clamp(
+				(input.Position.X - back.AbsolutePosition.X)
+				/ back.AbsoluteSize.X,
+				0,
+				1
+			)
+
+		local value =
+			math.floor(
+				minValue + (maxValue - minValue) * percent
+			)
+
+		fill.Size = UDim2.new(percent, 0, 1, 0)
+		setter(value)
+	end
+
+	back.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+
+			dragging = true
+			update(input)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging then
+			if input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch then
+
+				update(input)
+			end
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+
+			dragging = false
+		end
+	end)
+end
+
+setupSlider(
+	fovBack,
+	fovFill,
+	fovLabel,
+	50,
+	500,
+	function(value)
+		FOV = value
+		fovLabel.Text = "FOV: " .. value
+	end
+)
+
+setupSlider(
+	smoothBack,
+	smoothFill,
+	smoothLabel,
+	10,
+	100,
+	function(value)
+		Smoothness = value
+		smoothLabel.Text = "Smoothness: " .. value
+	end
+)
+
+--==================================================
+-- TARGET VALIDATION
+--==================================================
+
+local function validTarget(plr)
+	if not plr or plr == player then
+		return false
+	end
+
+	if TeamCheck and player.Team ~= nil and plr.Team == player.Team then
+		return false
+	end
+
+	local character = plr.Character
+
+	if not character then
+		return false
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local part = getHitPart(character)
+
+	if not part then
+		return false
+	end
+
+	return true
+end
+
+--==================================================
+-- WALL CHECK
+--==================================================
+
+local function visibleTarget(part, character)
+	if not WallCheck then
+		return true
+	end
+
+	local origin = camera.CFrame.Position
+	local direction = part.Position - origin
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {
+		player.Character,
+		camera
+	}
+
+	local result = workspace:Raycast(
+		origin,
+		direction,
+		params
+	)
+
+	if not result then
+		return true
+	end
+
+	return result.Instance:IsDescendantOf(character)
+end
+
+--==================================================
+-- TARGET SEARCH
+--==================================================
+
+local function getTarget()
+	local bestTarget = nil
+	local bestDistance = FOV
+
+	local viewport = camera.ViewportSize
+
+	local center = Vector2.new(
+		viewport.X / 2,
+		viewport.Y / 2
+	)
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+
+		if validTarget(plr) then
+
+			local character = plr.Character
+			local part = getHitPart(character)
+
+			if part then
+
+				local screenPosition, visible =
+					camera:WorldToViewportPoint(part.Position)
+
+				if visible and screenPosition.Z > 0 then
+
+					local screenPos = Vector2.new(
+						screenPosition.X,
+						screenPosition.Y
+					)
+
+					local distance =
+						(screenPos - center).Magnitude
+
+					if distance <= bestDistance then
+
+						if visibleTarget(part, character) then
+							bestDistance = distance
+							bestTarget = plr
+						end
+
+					end
+				end
+			end
+		end
+	end
+
+	return bestTarget
+end
+
+--==================================================
+-- PREDICTION
+--==================================================
+
+local function getAimPosition(part)
+	local velocity = Vector3.zero
+
+	if part:IsA("BasePart") then
+		velocity = part.AssemblyLinearVelocity
+	end
+
+	return part.Position + (velocity * Prediction)
+end
+
+--==================================================
+-- AIM STRENGTH
+--==================================================
+
+local function getAimAlpha()
+	-- 10 = slower
+	-- 100 = extremely strong
+
+	local strength = Smoothness / 100
+
+	return math.clamp(
+		0.08 + (strength * 0.92),
+		0.08,
+		1
+	)
+end
+
+--==================================================
+-- MAIN AIM LOOP
+--==================================================
 
 RunService:BindToRenderStep(
-	"StrongAimAssist",
+	"AimAssist",
 	Enum.RenderPriority.Camera.Value + 1,
 	function()
 
-		-- FOV NEVER DISAPPEARS
-		local currentFOV = GetFOV()
-
-		Circle.Size =
-			UDim2.fromOffset(
-				currentFOV*2,
-				currentFOV*2
-			)
-
-		-- Find a candidate every frame
-		local candidate = GetTarget()
-
-		if candidate then
-
-			CircleStroke.Color =
-				Color3.fromRGB(
-					50,255,100
-				)
-
-		else
-
-			CircleStroke.Color =
-				Color3.fromRGB(
-					255,255,255
-				)
-		end
+		-- Keep FOV circle visible even when UI is closed
+		fovCircle.Size = UDim2.fromOffset(
+			FOV * 2,
+			FOV * 2
+		)
 
 		if not AimEnabled then
+			circleStroke.Color = Color3.new(1, 1, 1)
+			CurrentTarget = nil
 			return
 		end
 
-		-- Sticky target lock
+		-- Target lock keeps the current target
 		if TargetLock then
 
-			if not Target
-				or not IsValidTarget(Target) then
+			if not CurrentTarget
+				or not validTarget(CurrentTarget) then
 
-				Target = candidate
+				CurrentTarget = getTarget()
 			end
 
 		else
-
-			Target = candidate
+			CurrentTarget = getTarget()
 		end
 
-		if not Target then
+		-- Change circle color when target is inside FOV
+		if CurrentTarget and validTarget(CurrentTarget) then
+			circleStroke.Color = Color3.fromRGB(
+				50,
+				255,
+				100
+			)
+		else
+			circleStroke.Color = Color3.new(
+				1,
+				1,
+				1
+			)
+
+			CurrentTarget = nil
 			return
 		end
 
-		local character = Target.Character
-		local part = character and GetHitPart(character)
+		local character = CurrentTarget.Character
+
+		local part = getHitPart(character)
 
 		if not part then
-			Target = nil
+			CurrentTarget = nil
 			return
 		end
 
-		--================================================
-		-- TARGET PREDICTION
-		--================================================
+		if WallCheck and not visibleTarget(part, character) then
+			CurrentTarget = nil
+			return
+		end
 
-		local velocity =
-			part.AssemblyLinearVelocity
+		-- Strong prediction / tracking
+		local aimPosition = getAimPosition(part)
 
-		local predictedPosition =
-			part.Position +
-			(velocity * Prediction)
+		local desiredCFrame = CFrame.lookAt(
+			camera.CFrame.Position,
+			aimPosition
+		)
 
-		--================================================
-		-- VERY STRONG TRACKING
-		--================================================
-
-		local strength =
-			math.clamp(
-				AimStrength / 100,
-				0.01,
-				1
-			)
-
-		local smooth =
-			math.clamp(
-				GetSmoothness() / 100,
-				0.01,
-				1
-			)
-
-		local alpha =
-			math.clamp(
-				smooth * strength,
-				0.01,
-				1
-			)
-
-		local desired =
-			CFrame.lookAt(
-				Camera.CFrame.Position,
-				predictedPosition
-			)
-
-		Camera.CFrame =
-			Camera.CFrame:Lerp(
-				desired,
-				alpha
+		-- Strong camera tracking
+		camera.CFrame =
+			camera.CFrame:Lerp(
+				desiredCFrame,
+				getAimAlpha()
 			)
 	end
 )
 
---========================================================
--- CLEANUP
---========================================================
+--==================================================
+-- MOBILE / PC OPEN BUTTON
+--==================================================
 
-Players.PlayerRemoving:Connect(function(player)
+openButton.Activated:Connect(function()
+	main.Visible = true
+	openButton.Visible = false
+end)
 
-	if Target == player then
-		Target = nil
+--==================================================
+-- DRAGGABLE MAIN UI
+--==================================================
+
+local dragging = false
+local dragStart
+local startPosition
+
+title.InputBegan:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = true
+		dragStart = input.Position
+		startPosition = main.Position
 	end
 end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if not dragging then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		local delta = input.Position - dragStart
+
+		main.Position =
+			UDim2.new(
+				startPosition.X.Scale,
+				startPosition.X.Offset + delta.X,
+				startPosition.Y.Scale,
+				startPosition.Y.Offset + delta.Y
+			)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		dragging = false
+	end
+end)
+
+--==================================================
+-- START
+--==================================================
+
+main.Visible = true
+openButton.Visible = false
+
+print("AimAssist loaded successfully")
