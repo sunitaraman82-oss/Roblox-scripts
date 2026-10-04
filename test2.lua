@@ -1,423 +1,826 @@
--- RIVALS Ragebot - UI-free extracted version
--- Screenshot-matched ragebot defaults (no UI)
--- Ragebot: enabled
--- Prioritize Hackers: ON
--- Stability: 1.5
--- Shoot Frames: 1
--- Use Primary / Secondary / Melee: ON
--- On Empty: SwapOrReload
--- Evasion Mode: Random
--- Character Origin: OFF
--- Base Radius: 100000000
--- Random Range: 1
+repeat task.wait() until game:IsLoaded()
 
--- Extracted from HD8TBv.lua.txt.
--- Enabled automatically. No GUI/toggle logic is included.
-
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local _cloneref = cloneref
-if type(_cloneref) ~= "function" then _cloneref = function(x) return x end end
-local _clonefunction = clonefunction
-if type(_clonefunction) ~= "function" then _clonefunction = function(x) return x end end
-cloneref = _cloneref
-clonefunction = _clonefunction
+local player = Players.LocalPlayer
+local character
+local hrp
 
-local Char, Root
-local function refreshCharacter()
-    Char = LocalPlayer.Character
-    Root = Char and Char:FindFirstChild("HumanoidRootPart") or nil
-    return Char
+local running = false
+local riotRunning = false
+local returnHomeEnabled = false
+
+local orientationOffsetEnabled = false
+local orientationOffsetPitch = 0
+local orientationOffsetYaw = 0
+local orientationOffsetRoll = 0
+local orientationOffsetConnection = nil
+
+local velocityPulseEnabled = false
+local velocityPulseConnection = nil
+local offsetDesyncEnabled = false
+local burstDesyncEnabled = false
+local anchorStutterEnabled = false
+local desyncConnection = nil
+local desyncOffsetAmount = 40
+local desyncBurstPower = 1500
+local desyncPulseDelay = 0.03
+local desyncStutterDelay = 0.08
+local desyncPulseClock = 0
+local desyncBurstClock = 0
+local desyncStutterClock = 0
+local desyncStutterAnchored = false
+local desyncOriginalAnchored = nil
+local desyncPreset = "Strong"
+local customJumpEnabled = false
+local jumpPowerValue = 50
+local originalJumpPower = nil
+local originalJumpHeight = nil
+local freezeCharacterEnabled = false
+local previousRootAnchored = nil
+local customGravityEnabled = false
+local originalGravity = workspace.Gravity
+local gravityValue = workspace.Gravity
+
+local currentDistance = 500
+local teleportMode = "VOID_SPAM"
+local voidSpamMode = "Random Far"
+local voidProfile = "Manual"
+local teleportInterval = 0.035
+local jitterStrength = 14
+
+local distPlusX = 200000
+local distMinusX = 200000
+local distPlusY = 200000
+local distMinusY = 200000
+local distPlusZ = 200000
+local distMinusZ = 200000
+
+local spinSpeed = 720
+local riotXJitter = 30
+local riotYJitter = 8
+local riotDistance = 300
+
+local homePosition = nil
+local homeCFrame = nil
+local homeReturnDelay = 3
+local homeReturnDistance = 10
+
+local teleportConnection
+local riotConnection
+local homeConnection
+
+local originalCFrame
+local riotOriginalCFrame
+local voidHideLastCFrame = nil
+local lastTeleport = 0
+local lastVelocityClear = 0
+
+local voidX = math.random(-1e8, 1e8)
+local voidZ = math.random(-1e8, 1e8)
+local voidYOffset = 0
+local voidYDir = 1
+local voidDirX = math.random() * 2 - 1
+local voidDirZ = math.random() * 2 - 1
+local voidElapsed = 0
+local voidYBase = 1e10 + math.random(-5e9, 5e9)
+local voidDriftSpeed = 9e6
+local voidYDriftSpeed = 4e6
+local voidYDriftRange = 2e9
+local voidChaos = 0.98
+
+local function resetVoidPattern()
+	voidX = math.random(-1e8, 1e8)
+	voidZ = math.random(-1e8, 1e8)
+	voidYOffset = 0
+	voidYDir = 1
+	voidDirX = math.random() * 2 - 1
+	voidDirZ = math.random() * 2 - 1
+	voidElapsed = 0
+	voidYBase = 1e10 + math.random(-5e9, 5e9)
 end
-refreshCharacter()
-LocalPlayer.CharacterAdded:Connect(function(character)
-    Char = character
-    Root = character:WaitForChild("HumanoidRootPart", 10)
+
+local function notify(text)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Project Rose",
+			Text = tostring(text),
+			Duration = 5,
+		})
+	end)
+end
+
+local function disconnect(conn)
+	if conn then
+		conn:Disconnect()
+	end
+
+	return nil
+end
+
+local function updateChar(newCharacter)
+	character = newCharacter
+	hrp = nil
+	originalJumpPower = nil
+	originalJumpHeight = nil
+	previousRootAnchored = nil
+	desyncOriginalAnchored = nil
+	desyncStutterAnchored = false
+
+	if character then
+		hrp = character:WaitForChild("HumanoidRootPart", 5)
+	end
+end
+
+if player.Character then
+	updateChar(player.Character)
+end
+
+player.CharacterAdded:Connect(updateChar)
+player.CharacterRemoving:Connect(function()
+	updateChar(nil)
 end)
 
-local Bridge = {}
-function Bridge.IsReadyToFight() return true end
-local Options = {}
-local Toggles = {}
-local FighterDataCache = { LocalDuel = { Seeded = false, IsInShootingRange = false } }
-local Genv = (type(getgenv) == "function" and getgenv()) or _G
-Genv.KiciaHookCaps = Genv.KiciaHookCaps or {}
-Genv.KiciaHookCaps.gate = Genv.KiciaHookCaps.gate or function()
-    return type(getgc) == "function" and type(sethiddenproperty) == "function"
+local SAFE_FLOOR = 2
+local SAFE_MAX_RISE = 800
+
+local function safeTeleport(pos)
+	if not hrp then
+		return
+	end
+
+	local x = pos.X
+	local y = math.clamp(pos.Y, SAFE_FLOOR, hrp.Position.Y + SAFE_MAX_RISE)
+	local z = pos.Z
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = character and { character } or {}
+
+	local hit = workspace:Raycast(Vector3.new(x, y + 500, z), Vector3.new(0, -1000, 0), params)
+	if hit then
+		y = math.max(hit.Position.Y + 3, SAFE_FLOOR)
+	end
+
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	hrp.CFrame = CFrame.new(x, y, z)
 end
-local function GetChar()
-    if not Char or not Char.Parent then refreshCharacter() end
-    return Char
+
+local function rawVoidTeleport(pos)
+	if not hrp then
+		return
+	end
+
+	if tick() - lastVelocityClear > 0.2 then
+		lastVelocityClear = tick()
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	hrp.CFrame = CFrame.new(pos)
 end
-local function GetRoot()
-    local character = GetChar()
-    Root = character and character:FindFirstChild("HumanoidRootPart") or Root
-    return Root
+
+local function getVoidHidePosition()
+	if not hrp then
+		return nil
+	end
+
+	return Vector3.new(
+		hrp.Position.X + 2e15,
+		999999,
+		hrp.Position.Z + 2e15
+	)
 end
 
-local function init(ctx)
+local function getDirectionalLimitOffset()
+	local raw = Vector3.new(
+		math.random(-distMinusX, distPlusX),
+		math.random(-distMinusY, distPlusY),
+		math.random(-distMinusZ, distPlusZ)
+	)
 
-        local RivalsRuntimeBridge = ctx.RivalsRuntimeBridge
-        local Options = ctx.Options
-        local Toggles = ctx.Toggles
-        local FighterDataCache = ctx.FighterDataCache
-        local GetChar = ctx.GetChar
-        local GetRoot = ctx.GetRoot
-        local __kicia_hook_genv = ctx.Genv
-        -- __KICIA_RAGEBOT_BEGIN__
-            local KiciaRagebot = {}
-            RivalsRuntimeBridge.KiciaRagebot = KiciaRagebot
+	if raw.Magnitude <= 0 then
+		return Vector3.zero
+	end
 
-            local RunService = game:GetService('RunService')
-            local HttpServiceRB = cloneref(game:GetService('HttpService'))
-            local CollectionServiceRB = cloneref(game:GetService('CollectionService'))
-            local PlayersRB = cloneref(game:GetService('Players'))
-            local ReplicatedStorageRB = cloneref(game:GetService('ReplicatedStorage'))
-            local WorkspaceRB = workspace
-            local LPRB = PlayersRB.LocalPlayer
-            local rbRandom = Random.new()
+	return raw.Unit * math.min(raw.Magnitude, currentDistance)
+end
 
-            -- Executor capability shims (all feature-detected live on build 17625359962).
-            local rbSetHidden = sethiddenproperty
-            local rbSetFFlag = (type(setfflag) == 'function') and setfflag or sfflag
-            local rbSetThreadIdentity = setthreadidentity
-            local rbGetThreadIdentity = getthreadidentity
+local function computeVoidDriftDir(t)
+	local nx = 0
+	local nz = 0
+	local amplitude = 1
+	local frequency = 0.0001
 
-            -- Clean FireServer stolen off a throwaway RemoteEvent (matches the script's No Spread
-            -- calling convention: positional call, never :FireServer()).
-            local rbCleanFireEvent = Instance.new('RemoteEvent')
-            local rbFireServerNative = clonefunction(rbCleanFireEvent.FireServer)
+	for _ = 1, 4 do
+		nx += math.noise(t * frequency, 0) * amplitude
+		nz += math.noise(0, t * frequency) * amplitude
+		frequency *= 2.37
+		amplitude *= 0.5
+	end
 
-            local function rbRawWrite(obj, key, value)
-                if typeof(obj) == 'Instance' then
-                    if not pcall(rbSetHidden, obj, key, value) then
-                        pcall(function() obj[key] = value end)
-                    end
-                else
-                    pcall(rawset, obj, key, value)
-                end
-            end
+	nx += math.sin(t * 0.00213) * math.cos(t * 0.00344) * 0.2
+	nz += math.cos(t * 0.00131) * math.sin(t * 0.00579) * 0.2
 
-            -- ---- settings (read live from the Obsidian controls; Kicia defaults as fallback) ----
-            local function optValue(id, default)
-                local o = Options and Options[id]
-                if o and o.Value ~= nil then
-                    return o.Value
-                end
-                return default
-            end
-            local function togValue(id, default)
-                local t = Toggles and Toggles[id]
-                if t and t.Value ~= nil then
-                    return t.Value == true
-                end
-                return default
-            end
-            local Setting = {
-                Stability = function() return optValue('P8S4S1', 1.5) end,
-                ShootFrames = function() return optValue('P8S4S2', 1) end,
-                PrioritizeHackers = function() return togValue('P8S4T4', true) end,
-                WeaponPrimary = function() return togValue('P8S4T5', true) end,
-                WeaponSecondary = function() return togValue('P8S4T6', true) end,
-                WeaponMelee = function() return togValue('P8S4T7', true) end,
-                OnEmpty = function() return optValue('P8S4D1', 'SwapOrReload') end,
-                EvasionMode = function() return optValue('P8S4D2', 'Random') end,
-                TranslocateOffset = function() return optValue('P8S4S3', -5) end,
-                RandomBaseRadius = function() return optValue('P8S4S4', 100000000) end,
-                RandomRadiusFactor = function() return optValue('P8S4S5', 1) end,
-                RandomAnchorFromCharacter = function() return togValue('P8S4T8', false) end,
-                -- ProjectileBreaker has no Kicia UI; RepositionInterval keeps Kicia's default.
-                RepositionInterval = function() return 0.3 end,
-            }
-            -- Kicia's ProjectileBreaker depth constants (config present in Kicia; no UI slider).
-            local PB_DEPTH_FORWARD = { Min = 0, Max = 4 }
-            local PB_DEPTH_FORWARD_FREQ = 5
-            local PB_DEPTH_UP = { Min = 0, Max = 5.5 }
-            local PB_DEPTH_UP_FREQ = 5
-            local PB_FALLBACK_BASE_RADIUS = 100
-            local PB_FALLBACK_RADIUS_FACTOR = 0.5
-            local PB_FALLBACK_ANCHOR_FROM_CHARACTER = false
+	local len = math.sqrt(nx * nx + nz * nz)
+	if len < 0.001 then
+		return math.cos(t * 0.1), math.sin(t * 0.1)
+	end
 
-            -- ---- self-contained game-handle resolution -----------------------------------
-            local function findChild(root, ...)
-                local node = root
-                for _, name in ipairs({ ... }) do
-                    if not node then
-                        return nil
-                    end
-                    node = node:FindFirstChild(name)
-                end
-                return node
-            end
+	return nx / len, nz / len
+end
 
-            local cachedEnumLibrary = nil
-            local function resolveEnumLibrary()
-                if cachedEnumLibrary then
-                    return cachedEnumLibrary
-                end
-                local mod = findChild(ReplicatedStorageRB, 'Modules', 'EnumLibrary')
-                if not mod then
-                    return nil
-                end
-                local ok, lib = pcall(require, mod)
-                if ok and type(lib) == 'table' then
-                    cachedEnumLibrary = lib
-                    return lib
-                end
-                return nil
-            end
-            local function enc(name)
-                local lib = resolveEnumLibrary()
-                if not lib then
-                    return nil
-                end
-                local ok, token = pcall(lib.ToEnum, lib, name)
-                if ok then
-                    return token
-                end
-                return nil
-            end
+local function getFarVoidPosition(dt)
+	voidElapsed += dt
 
-            local cachedUseItemRemote = nil
-            local function resolveUseItemRemote()
-                if cachedUseItemRemote and cachedUseItemRemote.Parent then
-                    return cachedUseItemRemote
-                end
-                local remote = findChild(ReplicatedStorageRB, 'Remotes', 'Replication', 'Fighter', 'UseItem')
-                if remote and remote:IsA('RemoteEvent') then
-                    cachedUseItemRemote = cloneref(remote)
-                    return cachedUseItemRemote
-                end
-                return nil
-            end
-            local cachedUpdateStateRemote = nil
-            local function resolveUpdateStateRemote()
-                if cachedUpdateStateRemote and cachedUpdateStateRemote.Parent then
-                    return cachedUpdateStateRemote
-                end
-                local remote = findChild(ReplicatedStorageRB, 'Remotes', 'Replication', 'Fighter', 'UpdateState')
-                if remote and remote:IsA('RemoteEvent') then
-                    cachedUpdateStateRemote = cloneref(remote)
-                    return cachedUpdateStateRemote
-                end
-                return nil
-            end
-            local cachedCameraRotationRemote = nil
-            local function resolveCameraRotationRemote()
-                if cachedCameraRotationRemote and cachedCameraRotationRemote.Parent then
-                    return cachedCameraRotationRemote
-                end
-                local remote = findChild(ReplicatedStorageRB, 'Remotes', 'Replication', 'Fighter', 'UpdateCameraRotation')
-                if remote and remote:IsA('RemoteEvent') then
-                    cachedCameraRotationRemote = cloneref(remote)
-                    return cachedCameraRotationRemote
-                end
-                return nil
-            end
-            local function requireModuleRB(name)
-                local mod = findChild(ReplicatedStorageRB, 'Modules', name)
-                if not mod then
-                    return nil
-                end
-                local ok, result = pcall(require, mod)
-                if ok then
-                    return result
-                end
-                return nil
-            end
+	if voidSpamMode == "Still Point" then
+		return Vector3.new(voidX, voidYBase + voidYOffset, voidZ)
+	end
 
-            -- FighterController singleton (carries LocalFighter + Objects) + its prototype
-            -- (carries _CameraReplicationLoop).  Cached with cheap revalidation.
-            local cachedFighterController = nil
-            local function resolveFighterController()
-                local cc = cachedFighterController
-                if type(cc) == 'table' and rawget(cc, 'LocalFighter') ~= nil then
-                    return cc
-                end
-                for _, m in ipairs(getgc(true)) do
-                    if type(m) == 'table' and rawget(m, 'LocalFighter') ~= nil and rawget(m, 'Objects') ~= nil then
-                        cachedFighterController = m
-                        return m
-                    end
-                end
-                return nil
-            end
-            local function resolveLocalFighter()
-                local controller = resolveFighterController()
-                return controller and rawget(controller, 'LocalFighter') or nil
-            end
-            local cachedFCPrototype = nil
-            local function resolveFighterControllerPrototype()
-                if type(cachedFCPrototype) == 'table' and rawget(cachedFCPrototype, '_CameraReplicationLoop') ~= nil then
-                    return cachedFCPrototype
-                end
-                local controller = resolveFighterController()
-                if controller then
-                    local mt = getmetatable(controller)
-                    local proto = mt and rawget(mt, '__index') or nil
-                    if type(proto) == 'table' and rawget(proto, '_CameraReplicationLoop') ~= nil then
-                        cachedFCPrototype = proto
-                        return proto
-                    end
-                end
-                for _, m in ipairs(getgc(true)) do
-                    if type(m) == 'table' then
-                        local idx = rawget(m, '__index')
-                        if type(idx) == 'table' and rawget(idx, '_CameraReplicationLoop') ~= nil then
-                            cachedFCPrototype = idx
-                            return idx
-                        end
-                    end
-                end
-                return nil
-            end
+	if voidSpamMode == "Slow Drift" then
+		local dx, dz = computeVoidDriftDir(voidElapsed)
 
-            -- ---- firing transport (Kicia t157/t16, lines 73511 / 88523 / 88535) ----------
-            local function fireGun(objectId, isRaycast, aim1, aim2, hitboxHead, extra)
-                local remote = resolveUseItemRemote()
-                local token = enc('StartShooting')
-                if not remote or not token or not objectId then
-                    return
-                end
-                local inner = { ['\0'] = aim1, ['\1'] = aim2, ['\2'] = hitboxHead, ['\3'] = extra }
-                local payload
-                if isRaycast then
-                    payload = { ['\1'] = inner, ['\2'] = true }
-                else
-                    payload = { ['\1'] = inner }
-                end
-                rbFireServerNative(remote, objectId, token, payload, nil)
-            end
-            local function fireMeleeAttack(objectId, a, b, c, d)
-                local remote = resolveUseItemRemote()
-                local token = enc('StartShooting')
-                local anim = enc('AttackAnimation1')
-                if not remote or not token or not anim or not objectId then
-                    return
-                end
-                rbFireServerNative(remote, objectId, token, { ['\1'] = { ['\0'] = a, ['\1'] = b, ['\2'] = c, ['\3'] = d }, ['\2'] = anim }, nil)
-            end
-            local function fireMeleeHeavy(objectId, a, b, c, d)
-                local remote = resolveUseItemRemote()
-                local token = enc('StartAiming') -- Kicia HeavyAttackEncoded uses StartAiming
-                local anim = enc('HeavyAttackAnimation1')
-                if not remote or not token or not anim or not objectId then
-                    return
-                end
-                rbFireServerNative(remote, objectId, token, { ['\1'] = { ['\0'] = a, ['\1'] = b, ['\2'] = c, ['\3'] = d }, ['\2'] = anim }, nil)
-            end
-            local function fireReload(objectId)
-                local remote = resolveUseItemRemote()
-                local start = enc('StartReloading')
-                local reload = enc('Reload')
-                if not remote or not start or not reload or not objectId then
-                    return
-                end
-                rbFireServerNative(remote, objectId, start, { ['\1'] = reload, ['\2'] = reload }, nil)
-            end
+		voidDirX += (dx - voidDirX) * voidChaos * dt * 10
+		voidDirZ += (dz - voidDirZ) * voidChaos * dt * 10
 
-            -- ---- raw ClientItem helpers --------------------------------------------------
-            local function itemObjectId(item)
-                local data = rawget(item, 'Data')
-                return data and rawget(data, 'ObjectID') or nil
-            end
-            local function itemInfo(item)
-                return rawget(item, 'Info')
-            end
-            local function itemType(item)
-                local info = itemInfo(item)
-                return info and rawget(info, 'Type') or nil
-            end
-            local function itemIsRaycast(item)
-                local info = itemInfo(item)
-                return info and rawget(info, 'IsRaycast') == true
-            end
-            local function itemName(item)
-                return rawget(item, 'Name') or rawget(item, 'ItemName')
-            end
-            local function itemAmmo(item)
-                local data = rawget(item, 'Data')
-                local ammo = data and rawget(data, 'Ammo')
-                return type(ammo) == 'number' and ammo or 0
-            end
-            local function itemAmmoReserve(item)
-                local data = rawget(item, 'Data')
-                local reserve = data and rawget(data, 'AmmoReserve')
-                if type(reserve) ~= 'number' then
-                    return math.huge
-                end
-                return reserve
-            end
-            -- Kicia t157:IsReloading (lines 73560-73573): _reload_cooldown OR _shoot_cooldown_no_ammo.
-            local function itemIsReloading(item)
-                local now = tick()
-                local cooldown = rawget(item, '_reload_cooldown')
-                if type(cooldown) == 'number' and now < cooldown then
-                    return true
-                end
-                local noAmmoCooldown = rawget(item, '_shoot_cooldown_no_ammo')
-                return type(noAmmoCooldown) == 'number' and now < noAmmoCooldown
-            end
-            -- Kicia t157:IsMagFull (line 73575): Info.MaxAmmo <= current ammo.
-            local function itemIsMagFull(item)
-                local info = itemInfo(item)
-                local maxAmmo = info and rawget(info, 'MaxAmmo')
-                return type(maxAmmo) == 'number' and maxAmmo <= itemAmmo(item)
-            end
-            -- Kicia t157:IsEquipped (line 73501): the item's own IsEquipped field - the same
-            -- read the game's Items modules (Minigun, Riot Shield) use. The fighter-side
-            -- Data.EquippedItemID compare it replaced never matched Kicia and is gone.
-            local function itemIsEquipped(item)
-                return rawget(item, 'IsEquipped')
-            end
-            -- Kicia t157:Equip (lines 73493-73499): no-op when equipped, then
-            -- item.ClientFighter:EquipItem(index). ClientFighter lives on the ITEM (the
-            -- LocalFighter IS a ClientFighter and has no such field; live-verified),
-            -- and index is the fighter's Items-table key - the exact value the game's
-            -- QuickAttackSystem passes (EquipItem(table.find(ClientFighter.Items, item))).
-            local function equipItem(item, index)
-                if itemIsEquipped(item) then
-                    return
-                end
-                local clientFighter = rawget(item, 'ClientFighter')
-                if clientFighter and index and type(clientFighter.EquipItem) == 'function' then
-                    pcall(function() clientFighter:EquipItem(index) end)
-                end
-            end
-            -- Kicia t157:Reload guard (lines 73539-73546).
-            local function reloadItem(item)
-                if itemIsReloading(item) or itemAmmoReserve(item) <= 0 or itemIsMagFull(item) then
-                    return
-                end
-                fireReload(itemObjectId(item))
-            end
+		voidX += voidDirX * voidDriftSpeed * dt
+		voidZ += voidDirZ * voidDriftSpeed * dt
 
-            -- ---- spoofed aim payload tables (hitscan strategy, lines 40519-40551) ---------
-            local NEG_HUGE = -9e37
-            local function buildAim(base, pitch, oy, oz)
-                return {
-                    ['\0'] = base['\0'], ['\1'] = base['\1'], ['\2'] = base['\2'],
-                    ['\3'] = pitch, ['\4'] = oy, ['\5'] = oz,
-                }
-            end
-            local AIM_ABOVE_ORIGIN = { ['\0'] = NEG_HUGE, ['\1'] = 0, ['\2'] = 0 }         -- t91
-            local AIM_ABOVE_END = { ['\0'] = 0, ['\1'] = -90000000, ['\2'] = 0 }           -- t92
-            local AIM_BELOW_ORIGIN = { ['\0'] = NEG_HUGE, ['\1'] = 0, ['\2'] = 0 }         -- t93
-            local AIM_BELOW_END = { ['\0'] = 0, ['\1'] = 90000000, ['\2'] = 0 }            -- t94
-            local AIM_EXTRA = { ['\0'] = 0, ['\1'] = 1, ['\2'] = 0, ['\3'] = 0, ['\4'] = 0, ['\5'] = 0 } -- t95
-            local OFFSET_ABOVE = Vector3.new(0, -0.7, 0.05)                                -- v230/v138
-            local OFFSET_BELOW = Vector3.new(0, -3.85, 0.05)                               -- v231/v139
-            local PITCH_ABOVE = -math.pi / 2                                               -- v140
-            local PITCH_BELOW = math.pi / 2                                                -- v141
+		voidYOffset += voidYDir * voidYDriftSpeed * dt
+		if math.abs(voidYOffset) >= voidYDriftRange then
+			voidYDir = -voidYDir
+		end
 
-            -- Riot-Shield-aware above/below classifier (Kicia ia(), lines 151550-151570).
-            -- "None" for shield-less targets (common case) folds to Above.  Enemy
-            -- itemObserver/camera are best-effort on this build; shield-less path is exact.
-            local function classifyAboveBelow(target)
-                local obs = target and target.itemObserver
-                if obs then
-                    local ok, result = pcall(function()
-                        local equipped = obs:GetEquippedItem()
-                        if equipped ~= nil and equipped.name == 'Riot Shield' th
+		return Vector3.new(voidX, voidYBase + voidYOffset, voidZ)
+	end
+
+	if voidSpamMode == "Circle" then
+		local r = math.max(currentDistance * 1000, 1e9) * (1 + math.sin(voidElapsed))
+		return Vector3.new(
+			voidX + math.cos(voidElapsed * 3) * r,
+			voidYBase + voidYOffset,
+			voidZ + math.sin(voidElapsed * 3) * r
+		)
+	end
+
+	if voidSpamMode == "Figure Eight" then
+		local r = math.max(currentDistance * 2000, 2e9)
+		return Vector3.new(
+			voidX + math.sin(voidElapsed * 2) * r,
+			voidYBase + math.sin(voidElapsed * 4) * r * 0.1,
+			voidZ + math.sin(voidElapsed * 3) * r
+		)
+	end
+
+	if voidSpamMode == "Wide Sweep" then
+		local t = voidElapsed * 15
+		local r = math.max(currentDistance * 10000, 1e10)
+		return Vector3.new(
+			voidX + math.sin(t) * r,
+			voidYBase + math.cos(t * 1.5) * r * 0.1,
+			voidZ + math.cos(t) * r
+		)
+	end
+
+	if voidSpamMode == "Fast Bounce" then
+		local t = voidElapsed * 50
+		local r = math.max(currentDistance * 10000, 1e10) * math.sin(t)
+		return Vector3.new(
+			voidX + r,
+			voidYBase + math.cos(t) * 1e10,
+			voidZ + r
+		)
+	end
+
+	if voidSpamMode == "Blink" then
+		if tick() % 0.1 < 0.05 then
+			return Vector3.new(voidX * 2, voidYBase + 1e11, voidZ * 2)
+		end
+
+		return Vector3.new(voidX, voidYBase, voidZ)
+	end
+
+	if voidSpamMode == "Grid Hop" then
+		local cell = math.max(currentDistance * 5000, 5e8)
+		local step = math.floor(voidElapsed * 8)
+		local gx = (step % 5) - 2
+		local gz = (math.floor(step / 5) % 5) - 2
+		local gy = (step % 2 == 0) and 0 or cell * 0.18
+
+		return Vector3.new(voidX + gx * cell, voidYBase + gy, voidZ + gz * cell)
+	end
+
+	if voidSpamMode == "Height Wave" then
+		local t = voidElapsed * 6
+		local r = math.max(currentDistance * 3000, 2e9)
+
+		return Vector3.new(
+			voidX + math.cos(t * 0.4) * r,
+			voidYBase + math.sin(t) * r * 0.35,
+			voidZ + math.sin(t * 0.4) * r
+		)
+	end
+
+	if voidSpamMode == "Square Loop" then
+		local r = math.max(currentDistance * 4000, 3e9)
+		local t = (voidElapsed * 1.8) % 4
+		local side = math.floor(t)
+		local a = t - side
+		local x
+		local z
+
+		if side == 0 then
+			x = -r + a * 2 * r
+			z = -r
+		elseif side == 1 then
+			x = r
+			z = -r + a * 2 * r
+		elseif side == 2 then
+			x = r - a * 2 * r
+			z = r
+		else
+			x = -r
+			z = r - a * 2 * r
+		end
+
+		return Vector3.new(voidX + x, voidYBase + math.sin(voidElapsed * 8) * r * 0.05, voidZ + z)
+	end
+
+	if voidSpamMode == "Cross Sweep" then
+		local r = math.max(currentDistance * 6000, 4e9)
+		local t = voidElapsed * 4
+		local axis = math.floor(t) % 4
+		local a = math.sin(t * math.pi) * r
+
+		if axis == 0 then
+			return Vector3.new(voidX + a, voidYBase, voidZ)
+		elseif axis == 1 then
+			return Vector3.new(voidX, voidYBase + math.sin(t) * r * 0.08, voidZ + a)
+		elseif axis == 2 then
+			return Vector3.new(voidX - a, voidYBase, voidZ)
+		end
+
+		return Vector3.new(voidX, voidYBase - math.sin(t) * r * 0.08, voidZ - a)
+	end
+
+	if voidSpamMode == "Stacked Steps" then
+		local cell = math.max(currentDistance * 3500, 2e9)
+		local step = math.floor(voidElapsed * 7)
+		local x = ((step % 7) - 3) * cell
+		local z = ((math.floor(step / 7) % 7) - 3) * cell
+		local y = (step % 5) * cell * 0.12
+
+		return Vector3.new(voidX + x, voidYBase + y, voidZ + z)
+	end
+
+	if voidSpamMode == "Noise Cloud" then
+		local r = math.max(currentDistance * 5000, 4e9)
+		local t = voidElapsed * 1.5
+
+		return Vector3.new(
+			voidX + math.noise(t, 0, 0) * r,
+			voidYBase + math.noise(0, t, 0) * r * 0.25,
+			voidZ + math.noise(0, 0, t) * r
+		)
+	end
+
+	local r = math.max(currentDistance * 10000, 1e11)
+	local sign = math.random() > 0.5 and 1 or -1
+	local jitter = Vector3.new(
+		math.random(-1e9, 1e9),
+		math.random(-1e8, 1e8),
+		math.random(-1e9, 1e9)
+	)
+
+	return Vector3.new(voidX + r * sign, voidYBase + jitter.Y, voidZ + r * sign) + jitter
+end
+
+local function performVoidStep(dt, phase)
+	if not hrp then
+		return false
+	end
+
+	dt = dt or teleportInterval
+	phase = phase or (voidElapsed + dt * 28)
+
+	if teleportMode == "VOID_HIDE" then
+		if not voidHideLastCFrame then
+			voidHideLastCFrame = hrp.CFrame
+		end
+
+		local hidePos = getVoidHidePosition()
+		if hidePos then
+			rawVoidTeleport(hidePos)
+		end
+
+		return true
+	end
+
+	if teleportMode == "VOID_SPAM" then
+		rawVoidTeleport(getFarVoidPosition(dt))
+		return true
+	end
+
+	local offset
+
+	if teleportMode == "FORWARD" then
+		offset = hrp.CFrame.LookVector * currentDistance
+	elseif teleportMode == "CAMERA" and workspace.CurrentCamera then
+		offset = workspace.CurrentCamera.CFrame.LookVector * currentDistance
+	elseif teleportMode == "DIRECTIONAL" then
+		offset = getDirectionalLimitOffset()
+	else
+		local r1 = currentDistance * (0.60 + 0.40 * math.sin(phase * 2.3))
+		local r2 = currentDistance * (0.25 + 0.15 * math.sin(phase * 5.7))
+		local r3 = currentDistance * (0.10 + 0.10 * math.sin(phase * 11.3))
+
+		local oX = math.cos(phase * 7.1) * r1 + math.cos(phase * 13.4) * r2 + math.cos(phase * 21.9) * r3
+		local oZ = math.sin(phase * 7.1) * r1 + math.sin(phase * 13.4) * r2 + math.sin(phase * 21.9) * r3
+		local oY = math.sin(phase * 9) * r1 * 0.4 + math.sin(phase * 17) * r2 * 0.3
+
+		local jX = math.noise(phase * 6, 0, 0) * jitterStrength * 3 + (math.random() - 0.5) * jitterStrength * 2.5
+		local jY = math.noise(0, phase * 6, 0) * jitterStrength * 1.5 + (math.random() - 0.5) * jitterStrength * 1.2
+		local jZ = math.noise(0, 0, phase * 6) * jitterStrength * 3 + (math.random() - 0.5) * jitterStrength * 2.5
+
+		offset = Vector3.new(oX + jX, oY + jY, oZ + jZ)
+	end
+
+	safeTeleport(hrp.Position + offset)
+	return true
+end
+
+local function startTeleport()
+	teleportConnection = disconnect(teleportConnection)
+
+	if hrp then
+		originalCFrame = hrp.CFrame
+	end
+
+	local phase = 0
+
+	teleportConnection = RunService.Heartbeat:Connect(function(dt)
+		if not running or not hrp then
+			return
+		end
+
+		if tick() - lastTeleport < teleportInterval then
+			return
+		end
+
+		lastTeleport = tick()
+		phase += dt * 28
+
+		performVoidStep(dt, phase)
+	end)
+end
+
+local function stopTeleport()
+	teleportConnection = disconnect(teleportConnection)
+
+	if teleportMode == "VOID_HIDE" and hrp and voidHideLastCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = voidHideLastCFrame
+		voidHideLastCFrame = nil
+	elseif hrp and originalCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = originalCFrame
+	end
+
+	originalCFrame = nil
+end
+
+local function startRiot()
+	riotConnection = disconnect(riotConnection)
+
+	if hrp then
+		riotOriginalCFrame = hrp.CFrame
+	end
+
+	local t0 = tick()
+	local seed = math.random(1000, 9999)
+
+	riotConnection = RunService.Heartbeat:Connect(function(dt)
+		if not riotRunning or not hrp then
+			return
+		end
+
+		local t = tick() - t0
+		local spread = riotDistance / 300
+
+		local yaw = math.rad(spinSpeed * dt)
+		local pitch = math.rad(spinSpeed * 0.37 * dt * math.sin(t * 3.1))
+		local roll = math.rad(spinSpeed * 0.19 * dt * math.cos(t * 5.7 + seed))
+
+		local spinCF = hrp.CFrame * CFrame.Angles(pitch, yaw, roll)
+
+		local jX = (math.random() - 0.5) * riotXJitter * spread * 2 + math.noise(t * 9, seed, 0) * riotXJitter * spread
+		local jY = (math.random() - 0.5) * riotYJitter * spread + math.noise(0, t * 9, seed) * riotYJitter * spread * 0.3
+		local jZ = (math.random() - 0.5) * riotXJitter * spread * 2 + math.noise(0, 0, t * 9 + seed) * riotXJitter * spread
+
+		local newY = math.max(spinCF.Position.Y + jY, SAFE_FLOOR)
+		hrp.CFrame = spinCF + Vector3.new(jX, newY - spinCF.Position.Y, jZ)
+	end)
+end
+
+local function stopRiot()
+	riotConnection = disconnect(riotConnection)
+
+	if hrp and riotOriginalCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = riotOriginalCFrame
+	end
+
+	riotOriginalCFrame = nil
+end
+
+local function startVelocityPulse()
+	velocityPulseConnection = disconnect(velocityPulseConnection)
+
+	local pulseClock = 0
+
+	velocityPulseConnection = RunService.Heartbeat:Connect(function(dt)
+		if not velocityPulseEnabled or not hrp then
+			return
+		end
+
+		pulseClock += dt * math.max(spinSpeed / 180, 0.1)
+
+		local horizontal = math.clamp(riotDistance * 0.35, 0, 220)
+		local lift = math.clamp(riotYJitter * 4, 0, 120)
+		local vx = math.cos(pulseClock) * horizontal
+		local vz = math.sin(pulseClock) * horizontal
+
+		hrp.AssemblyLinearVelocity = Vector3.new(vx, lift, vz)
+		hrp.AssemblyAngularVelocity = Vector3.new(0, math.rad(math.clamp(spinSpeed, 0, 1440)), 0)
+	end)
+end
+
+local function stopVelocityPulse()
+	velocityPulseConnection = disconnect(velocityPulseConnection)
+
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
+end
+
+local function anyDesyncEnabled()
+	return offsetDesyncEnabled or burstDesyncEnabled or anchorStutterEnabled
+end
+
+local function restoreDesyncStutter()
+	if hrp and desyncOriginalAnchored ~= nil then
+		hrp.Anchored = desyncOriginalAnchored
+	end
+
+	desyncOriginalAnchored = nil
+	desyncStutterAnchored = false
+	desyncStutterClock = 0
+end
+
+local function clearDesyncVelocity()
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+	end
+end
+
+local function stopDesyncSystems()
+	desyncConnection = disconnect(desyncConnection)
+	desyncPulseClock = 0
+	desyncBurstClock = 0
+	clearDesyncVelocity()
+	restoreDesyncStutter()
+end
+
+local function startDesyncSystems()
+	if desyncConnection then
+		return
+	end
+
+	desyncConnection = RunService.Heartbeat:Connect(function(dt)
+		if not anyDesyncEnabled() then
+			stopDesyncSystems()
+			return
+		end
+
+		if not hrp then
+			return
+		end
+
+		if offsetDesyncEnabled then
+			desyncPulseClock += dt
+
+			if desyncPulseClock >= desyncPulseDelay then
+				desyncPulseClock = 0
+
+				local angle = tick() * 3
+				local offset = Vector3.new(
+					math.sin(angle) * desyncOffsetAmount,
+					math.sin(angle * 1.7) * desyncOffsetAmount * 0.35,
+					math.cos(angle) * desyncOffsetAmount
+				)
+				local pulse = offset * 40
+				local velocity = hrp.AssemblyLinearVelocity
+
+				hrp.AssemblyLinearVelocity = Vector3.new(pulse.X, velocity.Y + pulse.Y, pulse.Z)
+				task.delay(0.05, function()
+					if hrp and hrp.Parent and offsetDesyncEnabled then
+						clearDesyncVelocity()
+					end
+				end)
+			end
+		end
+
+		if burstDesyncEnabled then
+			desyncBurstClock += dt
+
+			if desyncBurstClock >= 0.025 then
+				desyncBurstClock = 0
+
+				local direction = Vector3.new(math.random() - 0.5, 0, math.random() - 0.5)
+				if direction.Magnitude < 0.01 then
+					direction = Vector3.new(1, 0, 0)
+				else
+					direction = direction.Unit
+				end
+
+				local velocity = hrp.AssemblyLinearVelocity
+				hrp.AssemblyLinearVelocity = Vector3.new(
+					direction.X * desyncBurstPower,
+					velocity.Y + (math.random() - 0.5) * desyncBurstPower * 0.2,
+					direction.Z * desyncBurstPower
+				)
+
+				task.delay(0.05, function()
+					if hrp and hrp.Parent and burstDesyncEnabled then
+						clearDesyncVelocity()
+					end
+				end)
+			end
+		end
+
+		if anchorStutterEnabled and not freezeCharacterEnabled then
+			if desyncOriginalAnchored == nil then
+				desyncOriginalAnchored = hrp.Anchored
+			end
+
+			desyncStutterClock += dt
+			if desyncStutterClock >= desyncStutterDelay then
+				desyncStutterClock = 0
+				desyncStutterAnchored = not desyncStutterAnchored
+				hrp.Anchored = desyncStutterAnchored
+			end
+		elseif desyncOriginalAnchored ~= nil then
+			restoreDesyncStutter()
+		end
+	end)
+end
+
+local function refreshDesyncSystems()
+	if not anchorStutterEnabled and desyncOriginalAnchored ~= nil then
+		restoreDesyncStutter()
+	end
+
+	if anyDesyncEnabled() then
+		startDesyncSystems()
+	else
+		stopDesyncSystems()
+	end
+end
+
+local function getHumanoid()
+	return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function captureCharacterDefaults(humanoid)
+	if not humanoid then
+		return
+	end
+
+	if originalJumpPower == nil then
+		originalJumpPower = humanoid.JumpPower
+	end
+
+	if originalJumpHeight == nil then
+		originalJumpHeight = humanoid.JumpHeight
+	end
+end
+
+local function applyPlayerSettings()
+	local humanoid = getHumanoid()
+
+	if humanoid then
+		captureCharacterDefaults(humanoid)
+
+		if customJumpEnabled then
+			pcall(function()
+				humanoid.UseJumpPower = true
+			end)
+
+			humanoid.JumpPower = jumpPowerValue
+		end
+	end
+end
+
+local function restorePlayerSettings()
+	local humanoid = getHumanoid()
+
+	if humanoid then
+		if originalJumpPower then
+			humanoid.JumpPower = originalJumpPower
+		end
+
+		if originalJumpHeight then
+			humanoid.JumpHeight = originalJumpHeight
+		end
+	end
+end
+
+local function setCharacterFrozen(value)
+	freezeCharacterEnabled = value
+
+	if not hrp then
+		if not value then
+			previousRootAnchored = nil
+		end
+
+		return
+	end
+
+	if value then
+		if previousRootAnchored == nil then
+			previousRootAnchored = hrp.Anchored
+		end
+
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.Anchored = true
+	else
+		hrp.Anchored = previousRootAnchored == true
+		previousRootAnchored = nil
+	end
+end
+
+local function setCustomGravity(value)
+	customGravityEnabled = value
+
+	if value then
+		workspace.Gravity = gravityValue
+	else
+		workspace.Gravity = originalGravity
+	end
+end
+
+local function saveHome()
+	if hrp then
+		homeCFrame = hrp.CFrame
+		homePosition = hrp.Position
+	end
+end
+
+local function teleportHome()
+	if hrp and homeCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = homeCFrame
+	end
+end
+
+local function startReturnHome()
+	homeConnection = disconnect(homeConnection)
+
+	if not homeCFrame and hrp then
+		saveHome()
+	end
+
+	local lastReturn = 0
+	local lastHomeCheck = 0
+
+	homeConnection = RunService.Heartbeat:Connect(function()
+		if tick() - lastHomeCheck < 0.1 then
+			return
+		end
+
+		lastHomeCheck = tick()
+
+		if not returnHomeEnabled or not hrp or not homePosition or not homeCFrame then
+			return
+		end
+
+		if (hrp.Position - homePosition).Magnitude > homeReturnDistance
+			and tick() - lastReturn >= homeReturnDelay then
+			lastReturn = tick()
+			teleportHome()
+		end
+	end)
+end
+
+local functi
