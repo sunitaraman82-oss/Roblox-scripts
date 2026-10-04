@@ -823,4 +823,4 @@ local function startReturnHome()
 	end)
 end
 
-local functi
+local function 
