@@ -1,301 +1,469 @@
---// PRIVATE AIM ASSIST TEST
---// For your own Roblox Studio experience
+--// AIM ASSIST UI
+--// Roblox Studio / Your Own Experience
+--// Mobile + PC
+--// UI + FOV system
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 --==================================================
 -- SETTINGS
 --==================================================
 
 local Settings = {
-    AimAssist = false,
-    TargetLock = false,
-    ESP = false,
+    Enabled = false,
+    TargetLock = true,
     WallCheck = true,
     TeamCheck = true,
 
-    HitPart = "Random",
-
-    FOVEnabled = true,
-    FOV = 75,
-
-    Smoothness = 50,
+    FOV = 250,
+    Smoothness = 85,
+    HitPart = "Head"
 }
 
 --==================================================
 -- GUI
 --==================================================
 
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "PrivateAimAssist"
+Gui.Name = "AimAssistUI"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = PlayerGui
 
--- Main panel
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 300, 0, 430)
-Main.Position = UDim2.new(0, 20, 0.5, -215)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Main.BorderSizePixel = 0
-Main.Parent = Gui
+--==================================================
+-- FOV CIRCLE
+--==================================================
 
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 10)
-Corner.Parent = Main
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+FOVCircle.Parent = Gui
 
--- Title
+local CircleCorner = Instance.new("UICorner")
+CircleCorner.CornerRadius = UDim.new(1, 0)
+CircleCorner.Parent = FOVCircle
+
+local CircleStroke = Instance.new("UIStroke")
+CircleStroke.Thickness = 2
+CircleStroke.Color = Color3.fromRGB(255, 255, 255)
+CircleStroke.Transparency = 0.1
+CircleStroke.Parent = FOVCircle
+
+--==================================================
+-- MAIN PANEL
+--==================================================
+
+local Panel = Instance.new("Frame")
+Panel.Size = UDim2.fromOffset(285, 390)
+Panel.Position = UDim2.new(0, 20, 0.5, -195)
+Panel.BackgroundColor3 = Color3.fromRGB(22, 20, 27)
+Panel.BorderSizePixel = 0
+Panel.Parent = Gui
+
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 14)
+
+local PanelStroke = Instance.new("UIStroke")
+PanelStroke.Color = Color3.fromRGB(80, 75, 90)
+PanelStroke.Transparency = 0.2
+PanelStroke.Parent = Panel
+
+--==================================================
+-- TITLE
+--==================================================
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 0, 45)
-Title.Position = UDim2.new(0, 15, 0, 5)
+Title.Size = UDim2.new(1, -60, 0, 45)
+Title.Position = UDim2.fromOffset(15, 5)
 Title.BackgroundTransparency = 1
-Title.Text = "AIM ASSIST"
-Title.TextColor3 = Color3.fromRGB(230, 230, 230)
-Title.TextSize = 20
+Title.Text = "AimAssist"
+Title.TextColor3 = Color3.new(1, 1, 1)
 Title.Font = Enum.Font.GothamBold
+Title.TextSize = 19
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Main
+Title.Parent = Panel
 
--- Close button
+--==================================================
+-- CLOSE
+--==================================================
+
 local Close = Instance.new("TextButton")
-Close.Size = UDim2.new(0, 35, 0, 35)
-Close.Position = UDim2.new(1, -43, 0, 10)
-Close.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+Close.Size = UDim2.fromOffset(35, 35)
+Close.Position = UDim2.new(1, -45, 0, 10)
+Close.BackgroundColor3 = Color3.fromRGB(45, 42, 52)
 Close.Text = "×"
-Close.TextColor3 = Color3.fromRGB(255, 255, 255)
-Close.TextSize = 24
+Close.TextColor3 = Color3.new(1, 1, 1)
+Close.TextSize = 23
 Close.Font = Enum.Font.GothamBold
-Close.Parent = Main
+Close.Parent = Panel
 
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
--- Open button
-local OpenButton = Instance.new("TextButton")
-OpenButton.Size = UDim2.new(0, 55, 0, 55)
-OpenButton.Position = UDim2.new(0, 20, 0.5, -27)
-OpenButton.BackgroundColor3 = Color3.fromRGB(25, 130, 255)
-OpenButton.Text = "☰"
-OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-OpenButton.TextSize = 25
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.Visible = false
-OpenButton.Parent = Gui
-
-Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
-
 --==================================================
--- DRAGGING
+-- OPEN
 --==================================================
 
-local dragging = false
-local dragStart
-local startPosition
+local Open = Instance.new("TextButton")
+Open.Size = UDim2.fromOffset(52, 52)
+Open.Position = UDim2.fromOffset(20, 20)
+Open.BackgroundColor3 = Color3.fromRGB(30, 28, 36)
+Open.Text = "☰"
+Open.TextColor3 = Color3.new(1, 1, 1)
+Open.TextSize = 23
+Open.Font = Enum.Font.GothamBold
+Open.Visible = false
+Open.Parent = Gui
 
-Title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
+Instance.new("UICorner", Open).CornerRadius = UDim.new(0, 12)
 
-        dragging = true
-        dragStart = input.Position
-        startPosition = Main.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
+Close.Activated:Connect(function()
+    Panel.Visible = false
+    Open.Visible = true
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (
-        input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch
-    ) then
-
-        local delta = input.Position - dragStart
-
-        Main.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-    end
-end)
-
-Close.MouseButton1Click:Connect(function()
-    Main.Visible = false
-    OpenButton.Visible = true
-end)
-
-OpenButton.MouseButton1Click:Connect(function()
-    Main.Visible = true
-    OpenButton.Visible = false
+Open.Activated:Connect(function()
+    Panel.Visible = true
+    Open.Visible = false
 end)
 
 --==================================================
 -- UI HELPERS
 --==================================================
 
-local Y = 55
+local Y = 58
 
-local function CreateToggle(name, default, callback)
-
+local function CreateButton(text)
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(1, -30, 0, 42)
-    Button.Position = UDim2.new(0, 15, 0, Y)
-    Button.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-    Button.TextColor3 = Color3.fromRGB(220, 220, 220)
-    Button.TextSize = 14
-    Button.Font = Enum.Font.GothamMedium
-    Button.Parent = Main
 
-    Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 7)
+    Button.Size = UDim2.new(1, -30, 0, 40)
+    Button.Position = UDim2.fromOffset(15, Y)
+    Button.BackgroundColor3 = Color3.fromRGB(40, 37, 47)
+    Button.BorderSizePixel = 0
+    Button.Text = text
+    Button.TextColor3 = Color3.new(1, 1, 1)
+    Button.TextSize = 13
+    Button.Font = Enum.Font.GothamSemibold
+    Button.Parent = Panel
 
-    local State = default
+    Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 9)
 
-    local function Update()
-        if State then
-            Button.Text = name .. "    [ON]"
-            Button.BackgroundColor3 = Color3.fromRGB(35, 105, 170)
-        else
-            Button.Text = name .. "    [OFF]"
-            Button.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-        end
-    end
-
-    Button.MouseButton1Click:Connect(function()
-        State = not State
-        Update()
-        callback(State)
-    end)
-
-    Update()
-
-    Y = Y + 48
+    Y += 47
 
     return Button
 end
 
-local function CreateCycle(name, values, current, callback)
+local function CreateLabel(text)
+    local Label = Instance.new("TextLabel")
 
-    local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(1, -30, 0, 42)
-    Button.Position = UDim2.new(0, 15, 0, Y)
-    Button.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-    Button.TextColor3 = Color3.fromRGB(220, 220, 220)
-    Button.TextSize = 14
-    Button.Font = Enum.Font.GothamMedium
-    Button.Parent = Main
+    Label.Size = UDim2.new(1, -30, 0, 22)
+    Label.Position = UDim2.fromOffset(15, Y)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(205, 202, 215)
+    Label.TextSize = 12
+    Label.Font = Enum.Font.Gotham
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Panel
 
-    Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 7)
+    Y += 26
 
-    local index = table.find(values, current) or 1
-
-    local function Update()
-        Button.Text = name .. ": " .. tostring(values[index])
-    end
-
-    Button.MouseButton1Click:Connect(function()
-        index = index + 1
-
-        if index > #values then
-            index = 1
-        end
-
-        callback(values[index])
-        Update()
-    end)
-
-    Update()
-
-    Y = Y + 48
-
-    return Button
+    return Label
 end
 
 --==================================================
--- FEATURES
+-- AIM ASSIST
 --==================================================
 
-CreateToggle("Aim Assist", Settings.AimAssist, function(v)
-    Settings.AimAssist = v
-end)
+local AimButton = CreateButton("Aim Assist : OFF")
 
-CreateToggle("Target Lock", Settings.TargetLock, function(v)
-    Settings.TargetLock = v
-end)
-
-CreateToggle("ESP", Settings.ESP, function(v)
-    Settings.ESP = v
-end)
-
-CreateToggle("Wall Check", Settings.WallCheck, function(v)
-    Settings.WallCheck = v
-end)
-
-CreateToggle("Team Check", Settings.TeamCheck, function(v)
-    Settings.TeamCheck = v
-end)
-
-CreateCycle(
-    "Hit Part",
-    {"Random", "Head", "Body"},
-    Settings.HitPart,
-    function(v)
-        Settings.HitPart = v
+local function UpdateAim()
+    if Settings.Enabled then
+        AimButton.Text = "Aim Assist : ON"
+        AimButton.BackgroundColor3 = Color3.fromRGB(45, 135, 75)
+    else
+        AimButton.Text = "Aim Assist : OFF"
+        AimButton.BackgroundColor3 = Color3.fromRGB(40, 37, 47)
     end
-)
+end
 
-CreateToggle("FOV Circle", Settings.FOVEnabled, function(v)
-    Settings.FOVEnabled = v
+AimButton.Activated:Connect(function()
+    Settings.Enabled = not Settings.Enabled
+    UpdateAim()
 end)
 
 --==================================================
--- FOV SIZE
+-- TARGET LOCK
 --==================================================
 
-local FOVButton = Instance.new("TextButton")
-FOVButton.Size = UDim2.new(1, -30, 0, 42)
-FOVButton.Position = UDim2.new(0, 15, 0, Y)
-FOVButton.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-FOVButton.TextColor3 = Color3.fromRGB(220, 220, 220)
-FOVButton.TextSize = 14
-FOVButton.Font = Enum.Font.GothamMedium
-FOVButton.Parent = Main
+local LockButton = CreateButton("Target Lock : ON")
 
-Instance.new("UICorner", FOVButton).CornerRadius = UDim.new(0, 7)
+LockButton.Activated:Connect(function()
+    Settings.TargetLock = not Settings.TargetLock
 
-FOVButton.Text = "FOV Size: " .. Settings.FOV
+    LockButton.Text =
+        "Target Lock : " ..
+        (Settings.TargetLock and "ON" or "OFF")
+end)
 
-FOVButton.MouseButton1Click:Connect(function()
+--==================================================
+-- WALL CHECK
+--==================================================
 
-    Settings.FOV = Settings.FOV + 10
+local WallButton = CreateButton("Wall Check : ON")
 
-    if Settings.FOV > 100 then
-        Settings.FOV = 50
+WallButton.Activated:Connect(function()
+    Settings.WallCheck = not Settings.WallCheck
+
+    WallButton.Text =
+        "Wall Check : " ..
+        (Settings.WallCheck and "ON" or "OFF")
+end)
+
+--==================================================
+-- TEAM CHECK
+--==================================================
+
+local TeamButton = CreateButton("Team Check : ON")
+
+TeamButton.Activated:Connect(function()
+    Settings.TeamCheck = not Settings.TeamCheck
+
+    TeamButton.Text =
+        "Team Check : " ..
+        (Settings.TeamCheck and "ON" or "OFF")
+end)
+
+--==================================================
+-- HIT PART
+--==================================================
+
+local HitParts = {
+    "Head",
+    "Torso",
+    "HumanoidRootPart"
+}
+
+local HitIndex = 1
+
+local HitButton = CreateButton("Hit Part : Head")
+
+HitButton.Activated:Connect(function()
+    HitIndex += 1
+
+    if HitIndex > #HitParts then
+        HitIndex = 1
     end
 
-    FOVButton.Text = "FOV Size: " .. Settings.FOV
+    Settings.HitPart = HitParts[HitIndex]
+    HitButton.Text = "Hit Part : " .. Settings.HitPart
 end)
 
-Y = Y + 48
+--==================================================
+-- FOV
+--==================================================
+
+local FOVLabel = CreateLabel("FOV : " .. Settings.FOV)
+
+local FOVBar = Instance.new("Frame")
+FOVBar.Size = UDim2.new(1, -30, 0, 8)
+FOVBar.Position = UDim2.fromOffset(15, Y)
+FOVBar.BackgroundColor3 = Color3.fromRGB(55, 52, 63)
+FOVBar.BorderSizePixel = 0
+FOVBar.Parent = Panel
+
+Instance.new("UICorner", FOVBar).CornerRadius = UDim.new(1, 0)
+
+local FOVFill = Instance.new("Frame")
+FOVFill.Size = UDim2.new(Settings.FOV / 500, 0, 1, 0)
+FOVFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+FOVFill.BorderSizePixel = 0
+FOVFill.Parent = FOVBar
+
+Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
+
+Y += 25
 
 --==================================================
 -- SMOOTHNESS
 --==================================================
 
-local SmoothButton = Instance.new("TextButton")
-SmoothButton.Size = UDim2.new(1, -30, 0, 42)
-SmoothButton.Position = UDim2.new(0, 15, 0, Y)
-SmoothButton.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-SmoothButton.TextColor3 = Color3.fromRGB(220, 220, 220)
-SmoothButton.TextSize
+local SmoothLabel = CreateLabel(
+    "Smoothness : " .. Settings.Smoothness
+)
+
+local SmoothBar = Instance.new("Frame")
+SmoothBar.Size = UDim2.new(1, -30, 0, 8)
+SmoothBar.Position = UDim2.fromOffset(15, Y)
+SmoothBar.BackgroundColor3 = Color3.fromRGB(55, 52, 63)
+SmoothBar.BorderSizePixel = 0
+SmoothBar.Parent = Panel
+
+Instance.new("UICorner", SmoothBar).CornerRadius = UDim.new(1, 0)
+
+local SmoothFill = Instance.new("Frame")
+SmoothFill.Size = UDim2.new(
+    Settings.Smoothness / 100,
+    0,
+    1,
+    0
+)
+SmoothFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+SmoothFill.BorderSizePixel = 0
+SmoothFill.Parent = SmoothBar
+
+Instance.new("UICorner", SmoothFill).CornerRadius = UDim.new(1, 0)
+
+--==================================================
+-- SLIDER
+--==================================================
+
+local function MakeSlider(bar, fill, minimum, maximum, callback)
+
+    local dragging = false
+
+    local function Update(x)
+
+        local percent = math.clamp(
+            (x - bar.AbsolutePosition.X)
+            / bar.AbsoluteSize.X,
+            0,
+            1
+        )
+
+        local value = math.floor(
+            minimum + ((maximum - minimum) * percent)
+        )
+
+        fill.Size = UDim2.new(
+            percent,
+            0,
+            1,
+            0
+        )
+
+        callback(value)
+    end
+
+    bar.InputBegan:Connect(function(input)
+
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+
+            dragging = true
+            Update(input.Position.X)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+
+        if not dragging then
+            return
+        end
+
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+
+            Update(input.Position.X)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+
+            dragging = false
+        end
+    end)
+end
+
+MakeSlider(
+    FOVBar,
+    FOVFill,
+    50,
+    500,
+    function(value)
+        Settings.FOV = value
+        FOVLabel.Text = "FOV : " .. value
+
+        FOVCircle.Size =
+            UDim2.fromOffset(value * 2, value * 2)
+    end
+)
+
+MakeSlider(
+    SmoothBar,
+    SmoothFill,
+    10,
+    100,
+    function(value)
+        Settings.Smoothness = value
+        SmoothLabel.Text =
+            "Smoothness : " .. value
+    end
+)
+
+--==================================================
+-- DRAG PANEL
+--==================================================
+
+local draggingPanel = false
+local dragStart
+local panelStart
+
+Title.InputBegan:Connect(function(input)
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        draggingPanel = true
+        dragStart = input.Position
+        panelStart = Panel.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+    if not draggingPanel then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        local delta = input.Position - dragStart
+
+        Panel.Position = UDim2.new(
+            panelStart.X.Scale,
+            panelStart.X.Offset + delta.X,
+            panelStart.Y.Scale,
+            panelStart.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        draggingPanel = false
+    end
+end)
+
+--==================================================
+-- START
+--==================================================
+
+FOVCircle.Visible = true
+Panel.Visible = true
+Open.Visible = false
+
+print("AimAssist UI loaded successfully.")
