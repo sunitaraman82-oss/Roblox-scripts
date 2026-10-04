@@ -1,9 +1,9 @@
---// Advanced Dark AimAssist UI
---// For your own Roblox experience / Studio testing
---// UI + FOV visualization only
+--// Dark Mobile + PC Aim UI
+--// Roblox Studio / your own experience
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -14,13 +14,13 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 local Settings = {
 	AimAssist = false,
-	TargetLock = true,
+	TargetLock = false,
 	WallCheck = true,
 	TeamCheck = true,
 
+	ShowFOV = true,
 	FOV = 250,
 	Smoothness = 85,
-	Prediction = 0.08,
 
 	HitPart = "Head"
 }
@@ -29,58 +29,78 @@ local Settings = {
 -- COLORS
 --==================================================
 
-local COLORS = {
-	Background = Color3.fromRGB(14, 14, 19),
-	Panel = Color3.fromRGB(22, 22, 29),
-	Card = Color3.fromRGB(31, 31, 40),
-	CardHover = Color3.fromRGB(40, 40, 51),
-
-	Text = Color3.fromRGB(245, 245, 250),
-	SubText = Color3.fromRGB(155, 155, 170),
-
-	Blue = Color3.fromRGB(75, 130, 255),
-	Green = Color3.fromRGB(55, 195, 105),
-	Red = Color3.fromRGB(220, 75, 75),
-
-	Bar = Color3.fromRGB(55, 55, 67)
-}
+local BG = Color3.fromRGB(18, 18, 22)
+local PANEL = Color3.fromRGB(25, 25, 30)
+local ELEMENT = Color3.fromRGB(34, 34, 42)
+local BLUE = Color3.fromRGB(75, 130, 255)
+local WHITE = Color3.fromRGB(235, 235, 240)
+local GRAY = Color3.fromRGB(150, 150, 160)
 
 --==================================================
--- SCREEN GUI
+-- MAIN GUI
 --==================================================
 
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "AdvancedAimAssistUI"
+Gui.Name = "DarkAimUI"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
+Gui.DisplayOrder = 100
 Gui.Parent = PlayerGui
 
 --==================================================
--- FOV CIRCLE
+-- FOV GUI
 --==================================================
+
+local FOVGui = Instance.new("ScreenGui")
+FOVGui.Name = "FOVDisplay"
+FOVGui.ResetOnSpawn = false
+FOVGui.IgnoreGuiInset = true
+FOVGui.DisplayOrder = 999
+FOVGui.Parent = PlayerGui
 
 local FOVCircle = Instance.new("Frame")
 FOVCircle.Name = "FOVCircle"
 FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-FOVCircle.Size = UDim2.fromOffset(
-	Settings.FOV * 2,
-	Settings.FOV * 2
-)
 FOVCircle.BackgroundTransparency = 1
 FOVCircle.BorderSizePixel = 0
-FOVCircle.ZIndex = 1
-FOVCircle.Parent = Gui
+FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.ZIndex = 100
+FOVCircle.Parent = FOVGui
 
 local FOVCorner = Instance.new("UICorner")
 FOVCorner.CornerRadius = UDim.new(1, 0)
 FOVCorner.Parent = FOVCircle
 
 local FOVStroke = Instance.new("UIStroke")
-FOVStroke.Thickness = 2
-FOVStroke.Color = COLORS.Blue
-FOVStroke.Transparency = 0.1
+FOVStroke.Thickness = 3
+FOVStroke.Color = BLUE
+FOVStroke.Transparency = 0
 FOVStroke.Parent = FOVCircle
+
+--==================================================
+-- UPDATE FOV
+--==================================================
+
+local function UpdateFOV()
+	local Camera = workspace.CurrentCamera
+	if not Camera then
+		return
+	end
+
+	FOVCircle.Position = UDim2.fromOffset(
+		Camera.ViewportSize.X / 2,
+		Camera.ViewportSize.Y / 2
+	)
+
+	FOVCircle.Size = UDim2.fromOffset(
+		Settings.FOV * 2,
+		Settings.FOV * 2
+	)
+
+	FOVCircle.Visible = Settings.ShowFOV
+end
+
+RunService.RenderStepped:Connect(UpdateFOV)
 
 --==================================================
 -- MAIN PANEL
@@ -88,609 +108,277 @@ FOVStroke.Parent = FOVCircle
 
 local Panel = Instance.new("Frame")
 Panel.Name = "MainPanel"
-Panel.Size = UDim2.fromOffset(320, 440)
-Panel.Position = UDim2.new(0, 20, 0.5, -220)
-Panel.BackgroundColor3 = COLORS.Background
+Panel.Size = UDim2.fromOffset(330, 390)
+Panel.Position = UDim2.new(0.5, -165, 0.5, -195)
+Panel.BackgroundColor3 = BG
 Panel.BorderSizePixel = 0
 Panel.ZIndex = 10
 Panel.Parent = Gui
 
 local PanelCorner = Instance.new("UICorner")
-PanelCorner.CornerRadius = UDim.new(0, 16)
+PanelCorner.CornerRadius = UDim.new(0, 12)
 PanelCorner.Parent = Panel
 
 local PanelStroke = Instance.new("UIStroke")
-PanelStroke.Color = Color3.fromRGB(70, 70, 85)
-PanelStroke.Transparency = 0.35
+PanelStroke.Color = Color3.fromRGB(50, 50, 60)
+PanelStroke.Thickness = 1
 PanelStroke.Parent = Panel
 
 --==================================================
--- HEADER
+-- TITLE
 --==================================================
 
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 62)
-Header.BackgroundTransparency = 1
-Header.Parent = Panel
-
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -100, 0, 28)
-Title.Position = UDim2.fromOffset(18, 8)
+Title.Size = UDim2.new(1, -50, 0, 45)
+Title.Position = UDim2.fromOffset(15, 5)
 Title.BackgroundTransparency = 1
-Title.Text = "AimAssist"
-Title.TextColor3 = COLORS.Text
-Title.Font = Enum.Font.GothamBold
+Title.Text = "AIM ASSIST"
+Title.TextColor3 = WHITE
 Title.TextSize = 20
+Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
+Title.ZIndex = 11
+Title.Parent = Panel
 
-local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -100, 0, 18)
-Status.Position = UDim2.fromOffset(19, 36)
-Status.BackgroundTransparency = 1
-Status.Text = "●  DISABLED"
-Status.TextColor3 = COLORS.SubText
-Status.Font = Enum.Font.GothamMedium
-Status.TextSize = 10
-Status.TextXAlignment = Enum.TextXAlignment.Left
-Status.Parent = Header
+--==================================================
+-- CLOSE BUTTON
+--==================================================
 
-local Minimize = Instance.new("TextButton")
-Minimize.Size = UDim2.fromOffset(36, 36)
-Minimize.Position = UDim2.new(1, -48, 0, 13)
-Minimize.BackgroundColor3 = COLORS.Card
-Minimize.Text = "—"
-Minimize.TextColor3 = COLORS.Text
-Minimize.TextSize = 20
-Minimize.Font = Enum.Font.GothamBold
-Minimize.BorderSizePixel = 0
-Minimize.Parent = Header
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(35, 35)
+Close.Position = UDim2.new(1, -42, 0, 10)
+Close.BackgroundColor3 = ELEMENT
+Close.Text = "×"
+Close.TextColor3 = WHITE
+Close.TextSize = 24
+Close.Font = Enum.Font.GothamBold
+Close.ZIndex = 12
+Close.Parent = Panel
 
-local MinCorner = Instance.new("UICorner")
-MinCorner.CornerRadius = UDim.new(0, 10)
-MinCorner.Parent = Minimize
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
 --==================================================
 -- CONTENT
 --==================================================
 
-local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -24, 1, -72)
-Content.Position = UDim2.fromOffset(12, 65)
+local Content = Instance.new("ScrollingFrame")
+Content.Size = UDim2.new(1, -20, 1, -60)
+Content.Position = UDim2.fromOffset(10, 55)
 Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ScrollBarThickness = 3
+Content.CanvasSize = UDim2.fromOffset(0, 520)
+Content.ZIndex = 11
 Content.Parent = Panel
 
 --==================================================
--- TABS
+-- HELPER
 --==================================================
 
-local Tabs = Instance.new("Frame")
-Tabs.Size = UDim2.new(1, 0, 0, 42)
-Tabs.BackgroundColor3 = COLORS.Panel
-Tabs.BorderSizePixel = 0
-Tabs.Parent = Content
+local Y = 0
 
-local TabsCorner = Instance.new("UICorner")
-TabsCorner.CornerRadius = UDim.new(0, 10)
-TabsCorner.Parent = Tabs
+local function CreateToggle(name, default, callback)
 
-local TabLayout = Instance.new("UIListLayout")
-TabLayout.FillDirection = Enum.FillDirection.Horizontal
-TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-TabLayout.Padding = UDim.new(0, 4)
-TabLayout.Parent = Tabs
-
-local function CreateTab(text)
 	local Button = Instance.new("TextButton")
-	Button.Size = UDim2.new(0.31, 0, 0, 34)
-	Button.BackgroundColor3 = COLORS.Panel
+	Button.Size = UDim2.new(1, -5, 0, 45)
+	Button.Position = UDim2.fromOffset(0, Y)
+	Button.BackgroundColor3 = ELEMENT
 	Button.BorderSizePixel = 0
-	Button.Text = text
-	Button.TextColor3 = COLORS.SubText
-	Button.Font = Enum.Font.GothamSemibold
-	Button.TextSize = 11
-	Button.Parent = Tabs
+	Button.Text = ""
+	Button.ZIndex = 12
+	Button.Parent = Content
 
-	local Corner = Instance.new("UICorner")
-	Corner.CornerRadius = UDim.new(0, 8)
-	Corner.Parent = Button
-
-	return Button
-end
-
-local AimTab = CreateTab("AIM")
-local VisualTab = CreateTab("VISUALS")
-local SettingsTab = CreateTab("SETTINGS")
-
---==================================================
--- PAGES
---==================================================
-
-local Pages = Instance.new("Frame")
-Pages.Size = UDim2.new(1, 0, 1, -50)
-Pages.Position = UDim2.fromOffset(0, 50)
-Pages.BackgroundTransparency = 1
-Pages.Parent = Content
-
-local function CreatePage()
-	local Page = Instance.new("ScrollingFrame")
-	Page.Size = UDim2.fromScale(1, 1)
-	Page.BackgroundTransparency = 1
-	Page.BorderSizePixel = 0
-	Page.ScrollBarThickness = 3
-	Page.ScrollBarImageColor3 = COLORS.Blue
-	Page.CanvasSize = UDim2.new(0, 0, 0, 0)
-	Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	Page.Parent = Pages
-
-	local Padding = Instance.new("UIPadding")
-	Padding.PaddingTop = UDim.new(0, 4)
-	Padding.PaddingBottom = UDim.new(0, 8)
-	Padding.PaddingLeft = UDim.new(0, 2)
-	Padding.PaddingRight = UDim.new(0, 2)
-	Padding.Parent = Page
-
-	local Layout = Instance.new("UIListLayout")
-	Layout.Padding = UDim.new(0, 8)
-	Layout.Parent = Page
-
-	return Page
-end
-
-local AimPage = CreatePage()
-local VisualPage = CreatePage()
-local SettingsPage = CreatePage()
-
-VisualPage.Visible = false
-SettingsPage.Visible = false
-
-local function SetPage(tab, page)
-	AimPage.Visible = false
-	VisualPage.Visible = false
-	SettingsPage.Visible = false
-
-	AimTab.BackgroundColor3 = COLORS.Panel
-	VisualTab.BackgroundColor3 = COLORS.Panel
-	SettingsTab.BackgroundColor3 = COLORS.Panel
-
-	page.Visible = true
-	tab.BackgroundColor3 = COLORS.Card
-end
-
-SetPage(AimTab, AimPage)
-
-AimTab.Activated:Connect(function()
-	SetPage(AimTab, AimPage)
-end)
-
-VisualTab.Activated:Connect(function()
-	SetPage(VisualTab, VisualPage)
-end)
-
-SettingsTab.Activated:Connect(function()
-	SetPage(SettingsTab, SettingsPage)
-end)
-
---==================================================
--- CARD
---==================================================
-
-local function CreateCard(parent, height)
-	local Card = Instance.new("Frame")
-	Card.Size = UDim2.new(1, 0, 0, height)
-	Card.BackgroundColor3 = COLORS.Card
-	Card.BorderSizePixel = 0
-	Card.Parent = parent
-
-	local Corner = Instance.new("UICorner")
-	Corner.CornerRadius = UDim.new(0, 11)
-	Corner.Parent = Card
-
-	return Card
-end
-
---==================================================
--- TOGGLE
---==================================================
-
-local function CreateToggle(parent, text, value, callback)
-
-	local Card = CreateCard(parent, 52)
+	Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 8)
 
 	local Label = Instance.new("TextLabel")
-	Label.Size = UDim2.new(1, -75, 1, 0)
-	Label.Position = UDim2.fromOffset(14, 0)
+	Label.Size = UDim2.new(1, -65, 1, 0)
+	Label.Position = UDim2.fromOffset(15, 0)
 	Label.BackgroundTransparency = 1
-	Label.Text = text
-	Label.TextColor3 = COLORS.Text
-	Label.Font = Enum.Font.GothamMedium
-	Label.TextSize = 13
+	Label.Text = name
+	Label.TextColor3 = WHITE
+	Label.TextSize = 14
+	Label.Font = Enum.Font.Gotham
 	Label.TextXAlignment = Enum.TextXAlignment.Left
-	Label.Parent = Card
+	Label.ZIndex = 13
+	Label.Parent = Button
 
-	local Toggle = Instance.new("TextButton")
-	Toggle.Size = UDim2.fromOffset(46, 25)
-	Toggle.Position = UDim2.new(1, -60, 0.5, -12)
-	Toggle.Text = ""
-	Toggle.BorderSizePixel = 0
-	Toggle.Parent = Card
+	local Switch = Instance.new("Frame")
+	Switch.Size = UDim2.fromOffset(40, 22)
+	Switch.Position = UDim2.new(1, -52, 0.5, -11)
+	Switch.BackgroundColor3 = default and BLUE or Color3.fromRGB(70,70,80)
+	Switch.ZIndex = 13
+	Switch.Parent = Button
 
-	local ToggleCorner = Instance.new("UICorner")
-	ToggleCorner.CornerRadius = UDim.new(1, 0)
-	ToggleCorner.Parent = Toggle
+	Instance.new("UICorner", Switch).CornerRadius = UDim.new(1, 0)
 
 	local Dot = Instance.new("Frame")
-	Dot.Size = UDim2.fromOffset(19, 19)
-	Dot.BorderSizePixel = 0
-	Dot.Parent = Toggle
+	Dot.Size = UDim2.fromOffset(18, 18)
+	Dot.Position = default
+		and UDim2.new(1, -20, 0.5, -9)
+		or UDim2.fromOffset(2, 2)
+	Dot.BackgroundColor3 = WHITE
+	Dot.ZIndex = 14
+	Dot.Parent = Switch
 
-	local DotCorner = Instance.new("UICorner")
-	DotCorner.CornerRadius = UDim.new(1, 0)
-	DotCorner.Parent = Dot
+	Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
 
-	local State = value
+	local State = default
 
-	local function Update()
-		if State then
-			Toggle.BackgroundColor3 = COLORS.Blue
-			Dot.BackgroundColor3 = Color3.new(1, 1, 1)
-			Dot.Position = UDim2.new(1, -22, 0, 3)
-		else
-			Toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-			Dot.BackgroundColor3 = COLORS.SubText
-			Dot.Position = UDim2.fromOffset(3, 3)
-		end
-	end
-
-	Toggle.Activated:Connect(function()
+	Button.Activated:Connect(function()
 		State = not State
-		Update()
+
+		Switch.BackgroundColor3 =
+			State and BLUE or Color3.fromRGB(70,70,80)
+
+		Dot.Position =
+			State
+			and UDim2.new(1, -20, 0.5, -9)
+			or UDim2.fromOffset(2, 2)
+
 		callback(State)
 	end)
 
-	Update()
-
-	return Card
+	Y += 52
+	return Button
 end
 
---==================================================
--- SLIDER
---==================================================
-
-local function CreateSlider(parent, text, min, max, value, callback)
-
-	local Card = CreateCard(parent, 66)
-
-	local Label = Instance.new("TextLabel")
-	Label.Size = UDim2.new(1, -25, 0, 22)
-	Label.Position = UDim2.fromOffset(13, 5)
-	Label.BackgroundTransparency = 1
-	Label.Text = text .. " : " .. value
-	Label.TextColor3 = COLORS.Text
-	Label.Font = Enum.Font.GothamMedium
-	Label.TextSize = 12
-	Label.TextXAlignment = Enum.TextXAlignment.Left
-	Label.Parent = Card
-
-	local Bar = Instance.new("Frame")
-	Bar.Size = UDim2.new(1, -26, 0, 8)
-	Bar.Position = UDim2.fromOffset(13, 43)
-	Bar.BackgroundColor3 = COLORS.Bar
-	Bar.BorderSizePixel = 0
-	Bar.Parent = Card
-
-	local BarCorner = Instance.new("UICorner")
-	BarCorner.CornerRadius = UDim.new(1, 0)
-	BarCorner.Parent = Bar
-
-	local Fill = Instance.new("Frame")
-	Fill.Size = UDim2.new(
-		(value - min) / (max - min),
-		0,
-		1,
-		0
-	)
-	Fill.BackgroundColor3 = COLORS.Blue
-	Fill.BorderSizePixel = 0
-	Fill.Parent = Bar
-
-	local FillCorner = Instance.new("UICorner")
-	FillCorner.CornerRadius = UDim.new(1, 0)
-	FillCorner.Parent = Fill
-
-	local Knob = Instance.new("Frame")
-	Knob.Size = UDim2.fromOffset(16, 16)
-	Knob.AnchorPoint = Vector2.new(0.5, 0.5)
-	Knob.Position = UDim2.new(
-		(value - min) / (max - min),
-		0,
-		0.5,
-		0
-	)
-	Knob.BackgroundColor3 = Color3.new(1, 1, 1)
-	Knob.BorderSizePixel = 0
-	Knob.ZIndex = 3
-	Knob.Parent = Bar
-
-	local KnobCorner = Instance.new("UICorner")
-	KnobCorner.CornerRadius = UDim.new(1, 0)
-	KnobCorner.Parent = Knob
-
-	local Dragging = false
-
-	local function Update(x)
-
-		local Percent = math.clamp(
-			(x - Bar.AbsolutePosition.X) /
-			Bar.AbsoluteSize.X,
-			0,
-			1
-		)
-
-		local NewValue = math.floor(
-			min + ((max - min) * Percent)
-		)
-
-		Fill.Size = UDim2.new(Percent, 0, 1, 0)
-		Knob.Position = UDim2.new(Percent, 0, 0.5, 0)
-
-		Label.Text = text .. " : " .. NewValue
-
-		callback(NewValue)
-	end
-
-	Bar.InputBegan:Connect(function(input)
-
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-
-			Dragging = true
-			Update(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-
-		if not Dragging then
-			return
-		end
-
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch then
-
-			Update(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-
-			Dragging = false
-		end
-	end)
-
-	return Card
-end
-
---==================================================
--- BUTTON
---==================================================
-
-local function CreateButton(parent, text, callback)
+local function CreateButton(name, callback)
 
 	local Button = Instance.new("TextButton")
-	Button.Size = UDim2.new(1, 0, 0, 50)
-	Button.BackgroundColor3 = COLORS.Card
+	Button.Size = UDim2.new(1, -5, 0, 45)
+	Button.Position = UDim2.fromOffset(0, Y)
+	Button.BackgroundColor3 = ELEMENT
 	Button.BorderSizePixel = 0
-	Button.Text = text
-	Button.TextColor3 = COLORS.Text
-	Button.Font = Enum.Font.GothamMedium
-	Button.TextSize = 13
-	Button.Parent = parent
+	Button.Text = name
+	Button.TextColor3 = WHITE
+	Button.TextSize = 14
+	Button.Font = Enum.Font.Gotham
+	Button.ZIndex = 12
+	Button.Parent = Content
 
-	local Corner = Instance.new("UICorner")
-	Corner.CornerRadius = UDim.new(0, 11)
-	Corner.Parent = Button
+	Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 8)
 
 	Button.Activated:Connect(callback)
 
+	Y += 52
 	return Button
 end
 
 --==================================================
--- AIM PAGE
+-- TOGGLES
 --==================================================
 
-CreateToggle(
-	AimPage,
-	"Aim Assist",
-	Settings.AimAssist,
-	function(value)
+CreateToggle("Aim Assist", Settings.AimAssist, function(value)
+	Settings.AimAssist = value
+end)
 
-		Settings.AimAssist = value
+CreateToggle("Target Lock", Settings.TargetLock, function(value)
+	Settings.TargetLock = value
+end)
 
-		if value then
-			Status.Text = "●  ACTIVE"
-			Status.TextColor3 = COLORS.Green
-		else
-			Status.Text = "●  DISABLED"
-			Status.TextColor3 = COLORS.SubText
-		end
-	end
-)
+CreateToggle("Wall Check", Settings.WallCheck, function(value)
+	Settings.WallCheck = value
+end)
 
-CreateToggle(
-	AimPage,
-	"Target Lock",
-	Settings.TargetLock,
-	function(value)
-		Settings.TargetLock = value
-	end
-)
+CreateToggle("Team Check", Settings.TeamCheck, function(value)
+	Settings.TeamCheck = value
+end)
 
-CreateSlider(
-	AimPage,
-	"FOV",
-	50,
-	500,
-	Settings.FOV,
-	function(value)
-
-		Settings.FOV = value
-
-		-- Update the visible FOV circle
-		FOVCircle.Size = UDim2.fromOffset(
-			value * 2,
-			value * 2
-		)
-	end
-)
-
-CreateSlider(
-	AimPage,
-	"Smoothness",
-	10,
-	100,
-	Settings.Smoothness,
-	function(value)
-		Settings.Smoothness = value
-	end
-)
+CreateToggle("Show FOV Circle", Settings.ShowFOV, function(value)
+	Settings.ShowFOV = value
+	FOVCircle.Visible = value
+end)
 
 --==================================================
--- VISUAL PAGE
+-- FOV BUTTON
 --==================================================
 
-CreateToggle(
-	VisualPage,
-	"Show FOV Circle",
-	true,
-	function(value)
-		FOVCircle.Visible = value
+CreateButton("FOV: 250", function()
+
+	Settings.FOV += 25
+
+	if Settings.FOV > 500 then
+		Settings.FOV = 100
 	end
-)
 
-CreateToggle(
-	VisualPage,
-	"Wall Check",
-	Settings.WallCheck,
-	function(value)
-		Settings.WallCheck = value
-	end
-)
+	FOVCircle.Size = UDim2.fromOffset(
+		Settings.FOV * 2,
+		Settings.FOV * 2
+	)
 
-CreateToggle(
-	VisualPage,
-	"Team Check",
-	Settings.TeamCheck,
-	function(value)
-		Settings.TeamCheck = value
-	end
-)
-
-local HitParts = {
-	"Head",
-	"UpperTorso",
-	"HumanoidRootPart"
-}
-
-local HitIndex = 1
-
-local HitButton = CreateButton(
-	VisualPage,
-	"Hit Part : Head",
-	function()
-
-		HitIndex += 1
-
-		if HitIndex > #HitParts then
-			HitIndex = 1
-		end
-
-		Settings.HitPart = HitParts[HitIndex]
-
-		HitButton.Text =
-			"Hit Part : " .. Settings.HitPart
-	end
-)
+end)
 
 --==================================================
--- SETTINGS PAGE
+-- SMOOTHNESS
 --==================================================
 
-CreateButton(
-	SettingsPage,
-	"Reset Settings",
-	function()
+CreateButton("Smoothness: 85", function()
 
-		Settings.AimAssist = false
-		Settings.TargetLock = true
-		Settings.WallCheck = true
-		Settings.TeamCheck = true
+	Settings.Smoothness += 5
 
-		Settings.FOV = 250
-		Settings.Smoothness = 85
-		Settings.Prediction = 0.08
+	if Settings.Smoothness > 100 then
+		Settings.Smoothness = 5
+	end
+
+end)
+
+--==================================================
+-- HIT PART
+--==================================================
+
+CreateButton("Hit Part: Head", function()
+
+	if Settings.HitPart == "Head" then
+		Settings.HitPart = "Torso"
+
+	elseif Settings.HitPart == "Torso" then
+		Settings.HitPart = "HumanoidRootPart"
+
+	else
 		Settings.HitPart = "Head"
-
-		FOVCircle.Size = UDim2.fromOffset(
-			500,
-			500
-		)
-
-		Status.Text = "●  DISABLED"
-		Status.TextColor3 = COLORS.SubText
-
-		HitButton.Text = "Hit Part : Head"
 	end
-)
 
-CreateButton(
-	SettingsPage,
-	"Print Current Settings",
-	function()
-
-		print("===== AimAssist Settings =====")
-		print("AimAssist:", Settings.AimAssist)
-		print("TargetLock:", Settings.TargetLock)
-		print("WallCheck:", Settings.WallCheck)
-		print("TeamCheck:", Settings.TeamCheck)
-		print("FOV:", Settings.FOV)
-		print("Smoothness:", Settings.Smoothness)
-		print("Prediction:", Settings.Prediction)
-		print("HitPart:", Settings.HitPart)
-		print("==============================")
-	end
-)
+end)
 
 --==================================================
--- MINIMIZE / OPEN
+-- RESET
 --==================================================
+
+CreateButton("Reset Settings", function()
+
+	Settings.AimAssist = false
+	Settings.TargetLock = false
+	Settings.WallCheck = true
+	Settings.TeamCheck = true
+	Settings.ShowFOV = true
+	Settings.FOV = 250
+	Settings.Smoothness = 85
+	Settings.HitPart = "Head"
+
+	UpdateFOV()
+end)
+
+--==================================================
+-- CLOSE / OPEN
+--==================================================
+
+Close.Activated:Connect(function()
+	Panel.Visible = false
+end)
 
 local OpenButton = Instance.new("TextButton")
-OpenButton.Size = UDim2.fromOffset(54, 54)
-OpenButton.Position = UDim2.fromOffset(18, 18)
-OpenButton.BackgroundColor3 = COLORS.Panel
-OpenButton.BorderSizePixel = 0
+OpenButton.Size = UDim2.fromOffset(55, 55)
+OpenButton.Position = UDim2.fromOffset(15, 120)
+OpenButton.BackgroundColor3 = BG
 OpenButton.Text = "☰"
-OpenButton.TextColor3 = COLORS.Text
-OpenButton.TextSize = 22
+OpenButton.TextColor3 = WHITE
+OpenButton.TextSize = 24
 OpenButton.Font = Enum.Font.GothamBold
 OpenButton.Visible = false
-OpenButton.ZIndex = 20
+OpenButton.ZIndex = 50
 OpenButton.Parent = Gui
 
-local OpenCorner = Instance.new("UICorner")
-OpenCorner.CornerRadius = UDim.new(0, 13)
-OpenCorner.Parent = OpenButton
-
-Minimize.Activated:Connect(function()
-	Panel.Visible = false
-	OpenButton.Visible = true
-end)
+Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
 
 OpenButton.Activated:Connect(function()
 	Panel.Visible = true
@@ -698,58 +386,65 @@ OpenButton.Activated:Connect(function()
 end)
 
 --==================================================
--- PC + MOBILE DRAG
+-- DRAG SUPPORT: PC + MOBILE
 --==================================================
 
-local Dragging = false
-local DragStart
-local StartPosition
+local dragging = false
+local dragStart
+local startPosition
 
-Header.InputBegan:Connect(function(input)
+local function StartDrag(input)
+
+	dragging = true
+	dragStart = input.Position
+	startPosition = Panel.Position
+
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			dragging = false
+		end
+	end)
+end
+
+local function UpdateDrag(input)
+
+	if not dragging then
+		return
+	end
+
+	local delta = input.Position - dragStart
+
+	Panel.Position = UDim2.new(
+		startPosition.X.Scale,
+		startPosition.X.Offset + delta.X,
+		startPosition.Y.Scale,
+		startPosition.Y.Offset + delta.Y
+	)
+end
+
+Title.InputBegan:Connect(function(input)
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
 
-		Dragging = true
-		DragStart = input.Position
-		StartPosition = Panel.Position
+		StartDrag(input)
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
 
-	if not Dragging then
-		return
-	end
-
 	if input.UserInputType == Enum.UserInputType.MouseMovement
 		or input.UserInputType == Enum.UserInputType.Touch then
 
-		local Delta = input.Position - DragStart
-
-		Panel.Position = UDim2.new(
-			StartPosition.X.Scale,
-			StartPosition.X.Offset + Delta.X,
-			StartPosition.Y.Scale,
-			StartPosition.Y.Offset + Delta.Y
-		)
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-
-		Dragging = false
+		UpdateDrag(input)
 	end
 end)
 
 --==================================================
--- RESPONSIVE SIZE
+-- MOBILE RESIZE
 --==================================================
 
-local function Resize()
+local function UpdatePanelSize()
 
 	local Camera = workspace.CurrentCamera
 
@@ -757,44 +452,38 @@ local function Resize()
 		return
 	end
 
-	local Viewport = Camera.ViewportSize
+	local viewport = Camera.ViewportSize
 
-	if Viewport.X < 500 then
-
-		Panel.Size = UDim2.new(
-			0.84,
-			0,
-			0,
-			440
-		)
-
-		Panel.Position = UDim2.new(
-			0.08,
-			0,
-			0.5,
-			-220
-		)
-
-	else
-
+	if viewport.X < 500 then
 		Panel.Size = UDim2.fromOffset(
-			320,
-			440
+			math.min(300, viewport.X - 30),
+			380
 		)
 
 		Panel.Position = UDim2.new(
-			0,
-			20,
 			0.5,
-			-220
+			-Panel.Size.X.Offset / 2,
+			0.5,
+			-190
 		)
+	else
+		Panel.Size = UDim2.fromOffset(330, 390)
 	end
 end
 
-Resize()
+UpdatePanelSize()
 
-workspace.CurrentCamera:GetPropertyChangedSignal(
-	"ViewportSize"
-):Connect(Resize)
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(
+		UpdatePanelSize
+	)
+end
 
-print("Advanced Dark AimAssist UI loaded successfully.")
+--==================================================
+-- START
+--==================================================
+
+UpdateFOV()
+
+print("Dark Aim UI loaded successfully.")
+print("FOV Circle:", Settings.FOV)
