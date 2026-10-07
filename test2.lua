@@ -15,7 +15,7 @@ local Settings = {
 	WallCheck = true,
 
 	FOV = 50,
-	Smoothness = 85,
+	Smoothness = 100,
 	Prediction = 0.05,
 
 	HitPart = "Head"
