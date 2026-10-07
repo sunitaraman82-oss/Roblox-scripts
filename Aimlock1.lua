@@ -1,135 +1,211 @@
---// Mobile Aim Assist
---// Roblox Studio / Own Experience
---// Supports R6 + R15
+--// Studio Aim Assist
+--// Based on the target-selection / camera-aim behavior in
+--// KiciaHook_Source_Runnable.lua (1).txt
+--// For your own Roblox experience / Studio testing
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
 
 --==================================================
 -- SETTINGS
 --==================================================
 
 local Settings = {
-	Enabled = false,
+	Enabled = true,
 
-	TargetLock = true,
+	-- Source-style target selection
+	IgnoreFOV = false,
+	FOVRadius = 282,
+	MaxDistance = 1000,
+
+	-- Aim part
+	-- "Auto"   = prefer Head
+	-- "Head"   = Head
+	-- "Random" = Head / HumanoidRootPart
+	AimPart = "Auto",
+
+	-- Target validation
 	TeamCheck = true,
 	WallCheck = true,
+	RequireAlive = true,
 
-	FOV = 220,
-	Smoothness = 65,
-	Prediction = 0.05,
+	-- Camera aiming
+	AimSpeed = 35,
+	Prediction = 0.08,
 
-	HitPart = "Head"
+	-- Target lock
+	TargetLock = true,
+
+	-- Mobile behavior
+	MobileCenterAim = true,
+
+	-- FOV display
+	ShowFOV = true,
 }
 
-local Target = nil
-
 --==================================================
--- CHARACTER / HIT PART
+-- STATE
 --==================================================
 
-local function GetHitPart(character)
+local CurrentTarget = nil
+local CurrentPart = nil
+local RandomPartCache = nil
+local RandomTargetCache = nil
+
+--==================================================
+-- CHARACTER
+--==================================================
+
+local function GetCharacter(player)
+	if not player then
+		return nil
+	end
+
+	return player.Character
+end
+
+local function GetHumanoid(player)
+	local character = GetCharacter(player)
+
 	if not character then
 		return nil
 	end
 
-	-- Exact requested part first
-	local part = character:FindFirstChild(Settings.HitPart)
+	return character:FindFirstChildOfClass("Humanoid")
+end
 
-	if part and part:IsA("BasePart") then
-		return part
+local function IsAlive(player)
+	if not player then
+		return false
 	end
 
-	-- R6/R15 compatibility
-	if Settings.HitPart == "Torso" then
-		part = character:FindFirstChild("Torso")
-			or character:FindFirstChild("UpperTorso")
+	local humanoid = GetHumanoid(player)
 
-	elseif Settings.HitPart == "UpperTorso" then
-		part = character:FindFirstChild("UpperTorso")
-			or character:FindFirstChild("Torso")
-	end
-
-	if part and part:IsA("BasePart") then
-		return part
-	end
-
-	-- Universal fallback
-	return character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChild("Head")
+	return humanoid
+		and humanoid.Health > 0
 end
 
 --==================================================
--- VALID PLAYER
+-- TEAM CHECK
 --==================================================
 
-local function IsValidTarget(player)
-	if not player or player == LocalPlayer then
+local function IsValidTeamTarget(player)
+	if player == LocalPlayer then
 		return false
 	end
 
-	local character = player.Character
-
-	if not character then
-		return false
-	end
-
-	local humanoid =
-		character:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid or humanoid.Health <= 0 then
-		return false
-	end
-
-	-- Team check
 	if Settings.TeamCheck then
-		if LocalPlayer.Team ~= nil
-			and player.Team ~= nil
-			and LocalPlayer.Team == player.Team then
-
-			return false
+		if LocalPlayer.Team ~= nil and player.Team ~= nil then
+			if LocalPlayer.Team == player.Team then
+				return false
+			end
 		end
 	end
 
-	return GetHitPart(character) ~= nil
+	return true
 end
 
 --==================================================
--- WALL CHECK
+-- AIM PART
 --==================================================
 
-local function IsVisible(character, part)
+local function GetHead(character)
+	return character:FindFirstChild("Head")
+end
+
+local function GetRoot(character)
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function ResolveAimPart(player)
+	local character = GetCharacter(player)
+
+	if not character then
+		return nil
+	end
+
+	local head = GetHead(character)
+	local root = GetRoot(character)
+
+	if Settings.AimPart == "Head" then
+		return head or root
+	end
+
+	if Settings.AimPart == "Random" then
+		-- Keep the random part stable while the same
+		-- target remains locked, matching the source's
+		-- stable Random target behavior.
+
+		if RandomTargetCache == player
+			and RandomPartCache
+			and RandomPartCache.Parent == character then
+
+			return RandomPartCache
+		end
+
+		local candidates = {}
+
+		if head then
+			table.insert(candidates, head)
+		end
+
+		if root then
+			table.insert(candidates, root)
+		end
+
+		if #candidates == 0 then
+			return nil
+		end
+
+		local selected = candidates[math.random(1, #candidates)]
+
+		RandomTargetCache = player
+		RandomPartCache = selected
+
+		return selected
+	end
+
+	-- Auto
+	-- The source prefers head-style hitboxes when available.
+	return head or root
+end
+
+--==================================================
+-- VISIBILITY / WALL CHECK
+--==================================================
+
+local function IsVisible(player, part)
 	if not Settings.WallCheck then
 		return true
 	end
 
-	local camera = workspace.CurrentCamera
+	local character = GetCharacter(player)
 
-	if not camera then
+	if not character or not part then
 		return false
 	end
 
-	local origin = camera.CFrame.Position
+	local origin = Camera.CFrame.Position
 	local direction = part.Position - origin
 
-	local params = RaycastParams.new()
-
-	params.FilterType = Enum.RaycastFilterType.Exclude
-
-	params.FilterDescendantsInstances = {
+	local parameters = RaycastParams.new()
+	parameters.FilterType = Enum.RaycastFilterType.Exclude
+	parameters.FilterDescendantsInstances = {
 		LocalPlayer.Character,
-		camera
+		Camera
 	}
 
-	local result = workspace:Raycast(
+	parameters.IgnoreWater = true
+
+	local result = Workspace:Raycast(
 		origin,
 		direction,
-		params
+		parameters
 	)
 
 	if not result then
@@ -140,584 +216,376 @@ local function IsVisible(character, part)
 end
 
 --==================================================
--- FIND CLOSEST TARGET
+-- POINTER POSITION
 --==================================================
 
-local function FindTarget()
-	local camera = workspace.CurrentCamera
+local function GetAimPointer()
+	-- Mobile:
+	-- Use the center of the screen, similar to a
+	-- center-based aim mode.
 
-	if not camera then
+	if Settings.MobileCenterAim then
+		local viewport = Camera.ViewportSize
+
+		return Vector2.new(
+			viewport.X / 2,
+			viewport.Y / 2
+		)
+	end
+
+	-- Desktop:
+	return UserInputService:GetMouseLocation()
+end
+
+--==================================================
+-- FOV CIRCLE
+--==================================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StudioAimAssist"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Size = UDim2.fromOffset(
+	Settings.FOVRadius * 2,
+	Settings.FOVRadius * 2
+)
+FOVCircle.Parent = ScreenGui
+
+local CircleCorner = Instance.new("UICorner")
+CircleCorner.CornerRadius = UDim.new(1, 0)
+CircleCorner.Parent = FOVCircle
+
+local CircleStroke = Instance.new("UIStroke")
+CircleStroke.Thickness = 1
+CircleStroke.Transparency = 0.15
+CircleStroke.Parent = FOVCircle
+
+local function UpdateFOVCircle()
+	local pointer = GetAimPointer()
+
+	FOVCircle.Position = UDim2.fromOffset(
+		pointer.X,
+		pointer.Y
+	)
+
+	FOVCircle.Size = UDim2.fromOffset(
+		Settings.FOVRadius * 2,
+		Settings.FOVRadius * 2
+	)
+
+	FOVCircle.Visible = Settings.ShowFOV
+end
+
+--==================================================
+-- TARGET INFO
+--==================================================
+
+local function BuildTargetInfo(player)
+	if not player then
 		return nil
 	end
 
-	local viewport = camera.ViewportSize
+	if player == LocalPlayer then
+		return nil
+	end
 
-	local center = Vector2.new(
-		viewport.X / 2,
-		viewport.Y / 2
-	)
+	if Settings.RequireAlive and not IsAlive(player) then
+		return nil
+	end
 
-	local closestPlayer = nil
-	local closestDistance = Settings.FOV
+	if not IsValidTeamTarget(player) then
+		return nil
+	end
+
+	local character = GetCharacter(player)
+
+	if not character then
+		return nil
+	end
+
+	local part = ResolveAimPart(player)
+
+	if not part or not part.Parent then
+		return nil
+	end
+
+	local worldPosition = part.Position
+
+	-- Prediction
+	local velocity = part.AssemblyLinearVelocity
+
+	if Settings.Prediction > 0 then
+		worldPosition += velocity * Settings.Prediction
+	end
+
+	local screenPosition, onScreen =
+		Camera:WorldToViewportPoint(worldPosition)
+
+	if not onScreen and not Settings.IgnoreFOV then
+		return nil
+	end
+
+	if screenPosition.Z <= 0 then
+		if not Settings.IgnoreFOV then
+			return nil
+		end
+	end
+
+	local pointer = GetAimPointer()
+
+	local screenDistance = math.huge
+
+	if screenPosition.Z > 0 then
+		screenDistance = (
+			Vector2.new(
+				screenPosition.X,
+				screenPosition.Y
+			) - pointer
+		).Magnitude
+	end
+
+	-- Source behavior:
+	-- on-screen targets are ranked by screen distance.
+	-- off-screen targets are penalized heavily when
+	-- Ignore FOV is enabled.
+
+	local selectionDistance
+
+	if onScreen then
+		selectionDistance = screenDistance
+
+		if not Settings.IgnoreFOV
+			and screenDistance > Settings.FOVRadius then
+			return nil
+		end
+	else
+		selectionDistance = 1000000 +
+			(Camera.CFrame.Position - worldPosition).Magnitude
+	end
+
+	-- World distance
+	local worldDistance = (
+		Camera.CFrame.Position - worldPosition
+	).Magnitude
+
+	if worldDistance > Settings.MaxDistance then
+		return nil
+	end
+
+	-- Visibility
+	if not IsVisible(player, part) then
+		return nil
+	end
+
+	return {
+		Player = player,
+		Character = character,
+		Part = part,
+		WorldPosition = worldPosition,
+		WorldDistance = worldDistance,
+		ScreenDistance = screenDistance,
+		SelectionDistance = selectionDistance,
+	}
+end
+
+--==================================================
+-- FIND BEST TARGET
+--==================================================
+
+local function GetBestTarget()
+	local bestInfo = nil
 
 	for _, player in ipairs(Players:GetPlayers()) do
+		local info = BuildTargetInfo(player)
 
-		if IsValidTarget(player) then
+		if info then
+			if not bestInfo
+				or info.SelectionDistance <
+				bestInfo.SelectionDistance then
 
-			local character = player.Character
-			local part = GetHitPart(character)
-
-			if part then
-
-				local screenPoint, onScreen =
-					camera:WorldToViewportPoint(
-						part.Position
-					)
-
-				if onScreen and screenPoint.Z > 0 then
-
-					local screenPosition =
-						Vector2.new(
-							screenPoint.X,
-							screenPoint.Y
-						)
-
-					local distance =
-						(screenPosition - center).Magnitude
-
-					if distance <= closestDistance then
-
-						if IsVisible(character, part) then
-							closestDistance = distance
-							closestPlayer = player
-						end
-					end
-				end
+				bestInfo = info
 			end
 		end
 	end
 
-	return closestPlayer
+	return bestInfo
 end
 
 --==================================================
--- TARGET STILL VALID
+-- REFRESH LOCKED TARGET
 --==================================================
 
-local function TargetStillValid(player)
-	if not IsValidTarget(player) then
-		return false
+local function RefreshLockedTarget()
+	if not CurrentTarget then
+		return nil
 	end
 
-	local character = player.Character
-	local part = GetHitPart(character)
+	local info = BuildTargetInfo(CurrentTarget)
 
-	if not part then
-		return false
+	if not info then
+		CurrentTarget = nil
+		CurrentPart = nil
+		RandomPartCache = nil
+		RandomTargetCache = nil
+
+		return nil
 	end
 
-	local camera = workspace.CurrentCamera
+	CurrentPart = info.Part
 
-	if not camera then
-		return false
+	return info
+end
+
+--==================================================
+-- TARGET ACQUISITION
+--==================================================
+
+local function GetTarget()
+	-- Source-style target locking:
+	-- keep the existing target while it remains valid.
+
+	if Settings.TargetLock and CurrentTarget then
+		local locked = RefreshLockedTarget()
+
+		if locked then
+			return locked
+		end
 	end
 
-	-- Keep locked target inside FOV
-	local screenPoint, onScreen =
-		camera:WorldToViewportPoint(
-			part.Position
-		)
+	local best = GetBestTarget()
 
-	if not onScreen or screenPoint.Z <= 0 then
-		return false
+	if best then
+		CurrentTarget = best.Player
+		CurrentPart = best.Part
+
+		if RandomTargetCache ~= best.Player then
+			RandomTargetCache = nil
+			RandomPartCache = nil
+		end
+
+		return best
 	end
 
-	local center = Vector2.new(
-		camera.ViewportSize.X / 2,
-		camera.ViewportSize.Y / 2
+	CurrentTarget = nil
+	CurrentPart = nil
+	RandomTargetCache = nil
+	RandomPartCache = nil
+
+	return nil
+end
+
+--==================================================
+-- CAMERA AIM
+--==================================================
+
+local function AimCamera(targetInfo, deltaTime)
+	if not targetInfo then
+		return
+	end
+
+	local part = targetInfo.Part
+
+	if not part or not part.Parent then
+		return
+	end
+
+	local targetPosition = targetInfo.WorldPosition
+
+	local cameraPosition = Camera.CFrame.Position
+
+	local desiredCFrame = CFrame.lookAt(
+		cameraPosition,
+		targetPosition
 	)
 
-	local distance =
-		(
-			Vector2.new(
-				screenPoint.X,
-				screenPoint.Y
-			) - center
-		).Magnitude
+	-- Same general exponential smoothing approach
+	-- used by the source's camera aim implementation.
 
-	if distance > Settings.FOV then
-		return false
-	end
-
-	if not IsVisible(character, part) then
-		return false
-	end
-
-	return true
-end
-
---==================================================
--- AIM
---==================================================
-
-local function AimAt(player, deltaTime)
-	local camera = workspace.CurrentCamera
-
-	if not camera then
-		return
-	end
-
-	local character = player.Character
-
-	if not character then
-		return
-	end
-
-	local part = GetHitPart(character)
-
-	if not part then
-		return
-	end
-
-	local predictedPosition =
-		part.Position +
-		(part.AssemblyLinearVelocity * Settings.Prediction)
-
-	local desiredCFrame =
-		CFrame.lookAt(
-			camera.CFrame.Position,
-			predictedPosition
-		)
-
-	-- Smoothness:
-	-- 1 = fast
-	-- 100 = very smooth
-	local responsiveness =
-		1 - (Settings.Smoothness / 100)
-
-	responsiveness =
-		math.clamp(
-			responsiveness,
-			0.03,
-			0.8
-		)
-
-	-- Framerate-independent smoothing
-	local alpha =
-		1 - math.pow(
-			1 - responsiveness,
-			deltaTime * 60
-		)
-
-	camera.CFrame =
-		camera.CFrame:Lerp(
-			desiredCFrame,
-			alpha
-		)
-end
-
---==================================================
--- GUI
---==================================================
-
-local Gui = Instance.new("ScreenGui")
-
-Gui.Name = "MobileAimAssist"
-Gui.ResetOnSpawn = false
-Gui.IgnoreGuiInset = true
-Gui.Parent = PlayerGui
-
---==================================================
--- FOV
---==================================================
-
-local FOVCircle = Instance.new("Frame")
-
-FOVCircle.Name = "FOV"
-FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-FOVCircle.Size =
-	UDim2.fromOffset(
-		Settings.FOV * 2,
-		Settings.FOV * 2
+	local frameDelta = math.clamp(
+		typeof(deltaTime) == "number"
+			and deltaTime
+			or (1 / 60),
+		0,
+		0.1
 	)
 
-FOVCircle.BackgroundTransparency = 1
-FOVCircle.Parent = Gui
+	local blendAlpha = math.clamp(
+		1 - math.exp(
+			-frameDelta *
+			(2 + (Settings.AimSpeed * 0.58))
+		),
+		0,
+		1
+	)
 
-local FOVCorner = Instance.new("UICorner")
-FOVCorner.CornerRadius = UDim.new(1, 0)
-FOVCorner.Parent = FOVCircle
-
-local FOVStroke = Instance.new("UIStroke")
-
-FOVStroke.Thickness = 2
-FOVStroke.Transparency = 0.15
-FOVStroke.Color = Color3.fromRGB(255, 255, 255)
-FOVStroke.Parent = FOVCircle
-
---==================================================
--- OPEN BUTTON
---==================================================
-
-local OpenButton = Instance.new("TextButton")
-
-OpenButton.Size = UDim2.fromOffset(55, 55)
-OpenButton.Position = UDim2.fromOffset(18, 90)
-OpenButton.BackgroundColor3 =
-	Color3.fromRGB(25, 25, 32)
-
-OpenButton.Text = "☰"
-OpenButton.TextColor3 = Color3.new(1, 1, 1)
-OpenButton.TextSize = 24
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.Visible = false
-OpenButton.Parent = Gui
-
-Instance.new("UICorner", OpenButton).CornerRadius =
-	UDim.new(0, 14)
-
---==================================================
--- PANEL
---==================================================
-
-local Panel = Instance.new("Frame")
-
-Panel.Size = UDim2.fromOffset(290, 365)
-Panel.Position = UDim2.new(0, 18, 0.5, -182)
-Panel.BackgroundColor3 =
-	Color3.fromRGB(22, 22, 28)
-
-Panel.BorderSizePixel = 0
-Panel.Parent = Gui
-
-Instance.new("UICorner", Panel).CornerRadius =
-	UDim.new(0, 15)
-
-local PanelStroke = Instance.new("UIStroke")
-
-PanelStroke.Color =
-	Color3.fromRGB(75, 75, 90)
-
-PanelStroke.Transparency = 0.3
-PanelStroke.Parent = Panel
-
---==================================================
--- TITLE
---==================================================
-
-local Title = Instance.new("TextLabel")
-
-Title.Size = UDim2.new(1, -60, 0, 45)
-Title.Position = UDim2.fromOffset(15, 5)
-
-Title.BackgroundTransparency = 1
-Title.Text = "Mobile Aim Assist"
-
-Title.TextColor3 =
-	Color3.new(1, 1, 1)
-
-Title.TextSize = 18
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-Title.Parent = Panel
-
---==================================================
--- CLOSE
---==================================================
-
-local CloseButton = Instance.new("TextButton")
-
-CloseButton.Size = UDim2.fromOffset(38, 38)
-CloseButton.Position =
-	UDim2.new(1, -48, 0, 9)
-
-CloseButton.BackgroundColor3 =
-	Color3.fromRGB(45, 45, 55)
-
-CloseButton.Text = "×"
-CloseButton.TextColor3 =
-	Color3.new(1, 1, 1)
-
-CloseButton.TextSize = 24
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Parent = Panel
-
-Instance.new("UICorner", CloseButton).CornerRadius =
-	UDim.new(0, 10)
-
---==================================================
--- BUTTON CREATOR
---==================================================
-
-local Y = 58
-
-local function CreateButton(text)
-
-	local button = Instance.new("TextButton")
-
-	button.Size =
-		UDim2.new(1, -30, 0, 42)
-
-	button.Position =
-		UDim2.fromOffset(15, Y)
-
-	button.BackgroundColor3 =
-		Color3.fromRGB(42, 42, 52)
-
-	button.BorderSizePixel = 0
-
-	button.Text = text
-	button.TextColor3 =
-		Color3.new(1, 1, 1)
-
-	button.TextSize = 14
-	button.Font = Enum.Font.GothamSemibold
-
-	button.Parent = Panel
-
-	Instance.new("UICorner", button).CornerRadius =
-		UDim.new(0, 10)
-
-	Y += 49
-
-	return button
+	Camera.CFrame = Camera.CFrame:Lerp(
+		desiredCFrame,
+		blendAlpha
+	)
 end
 
 --==================================================
--- AIM BUTTON
+-- ENABLE / DISABLE
 --==================================================
 
-local AimButton =
-	CreateButton("Aim Assist : OFF")
-
-local function UpdateAimButton()
-
-	if Settings.Enabled then
-
-		AimButton.Text =
-			"Aim Assist : ON"
-
-		AimButton.BackgroundColor3 =
-			Color3.fromRGB(45, 135, 75)
-
-	else
-
-		AimButton.Text =
-			"Aim Assist : OFF"
-
-		AimButton.BackgroundColor3 =
-			Color3.fromRGB(42, 42, 52)
-
-		Target = nil
-	end
+local function ResetTarget()
+	CurrentTarget = nil
+	CurrentPart = nil
+	RandomTargetCache = nil
+	RandomPartCache = nil
 end
 
-AimButton.Activated:Connect(function()
-
-	Settings.Enabled =
-		not Settings.Enabled
-
-	UpdateAimButton()
-end)
-
 --==================================================
--- TARGET LOCK
---==================================================
-
-local LockButton =
-	CreateButton("Target Lock : ON")
-
-LockButton.Activated:Connect(function()
-
-	Settings.TargetLock =
-		not Settings.TargetLock
-
-	LockButton.Text =
-		"Target Lock : " ..
-		(Settings.TargetLock and "ON" or "OFF")
-
-	if not Settings.TargetLock then
-		Target = nil
-	end
-end)
-
---==================================================
--- TEAM CHECK
---==================================================
-
-local TeamButton =
-	CreateButton("Team Check : ON")
-
-TeamButton.Activated:Connect(function()
-
-	Settings.TeamCheck =
-		not Settings.TeamCheck
-
-	TeamButton.Text =
-		"Team Check : " ..
-		(Settings.TeamCheck and "ON" or "OFF")
-
-	Target = nil
-end)
-
---==================================================
--- WALL CHECK
---==================================================
-
-local WallButton =
-	CreateButton("Wall Check : ON")
-
-WallButton.Activated:Connect(function()
-
-	Settings.WallCheck =
-		not Settings.WallCheck
-
-	WallButton.Text =
-		"Wall Check : " ..
-		(Settings.WallCheck and "ON" or "OFF")
-
-	Target = nil
-end)
-
---==================================================
--- HIT PART
---==================================================
-
-local HitParts = {
-	"Head",
-	"Torso",
-	"HumanoidRootPart"
-}
-
-local HitIndex = 1
-
-local HitButton =
-	CreateButton("Hit Part : Head")
-
-HitButton.Activated:Connect(function()
-
-	HitIndex += 1
-
-	if HitIndex > #HitParts then
-		HitIndex = 1
-	end
-
-	Settings.HitPart =
-		HitParts[HitIndex]
-
-	HitButton.Text =
-		"Hit Part : " ..
-		Settings.HitPart
-
-	Target = nil
-end)
-
---==================================================
--- OPEN / CLOSE
---==================================================
-
-CloseButton.Activated:Connect(function()
-
-	Panel.Visible = false
-	OpenButton.Visible = true
-end)
-
-OpenButton.Activated:Connect(function()
-
-	Panel.Visible = true
-	OpenButton.Visible = false
-end)
-
---==================================================
--- MAIN AIM LOOP
+-- MAIN LOOP
 --==================================================
 
 RunService:BindToRenderStep(
-	"MobileAimAssist",
+	"StudioAimAssist",
 	Enum.RenderPriority.Camera.Value + 1,
 	function(deltaTime)
 
-		local camera =
-			workspace.CurrentCamera
+		Camera = Workspace.CurrentCamera
 
-		if not camera then
+		if not Camera then
+			ResetTarget()
 			return
 		end
 
-		-- Update FOV
-		FOVCircle.Position =
-			UDim2.fromOffset(
-				camera.ViewportSize.X / 2,
-				camera.ViewportSize.Y / 2
-			)
-
-		FOVCircle.Size =
-			UDim2.fromOffset(
-				Settings.FOV * 2,
-				Settings.FOV * 2
-			)
+		UpdateFOVCircle()
 
 		if not Settings.Enabled then
-
-			Target = nil
-
-			FOVStroke.Color =
-				Color3.fromRGB(
-					255,
-					255,
-					255
-				)
-
+			ResetTarget()
 			return
 		end
 
-		-- Acquire target
-		if not Target then
-			Target = FindTarget()
-		end
+		local targetInfo = GetTarget()
 
-		-- Check locked target
-		if Target then
-
-			if not TargetStillValid(Target) then
-
-				Target = nil
-
-			else
-
-				FOVStroke.Color =
-					Color3.fromRGB(
-						50,
-						255,
-						100
-					)
-
-				AimAt(
-					Target,
-					deltaTime
-				)
-
-				-- If lock is disabled,
-				-- choose again next frame.
-				if not Settings.TargetLock then
-					Target = nil
-				end
-			end
-		end
-
-		if not Target then
-
-			FOVStroke.Color =
-				Color3.fromRGB(
-					255,
-					255,
-					255
-				)
+		if targetInfo then
+			AimCamera(
+				targetInfo,
+				deltaTime
+			)
 		end
 	end
 )
 
-UpdateAimButton()
+--==================================================
+-- CLEANUP
+--==================================================
+
+Players.PlayerRemoving:Connect(function(player)
+	if player == CurrentTarget then
+		ResetTarget()
+	end
+end)
+
+LocalPlayer.CharacterRemoving:Connect(function()
+	ResetTarget()
+end)
