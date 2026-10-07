@@ -1,223 +1,165 @@
--- RIVALS-STYLE TRAINING PANEL
--- Roblox Studio / your own experience
--- Features: Mobile GUI, Fly, Aim Assist, FOV, ESP-style highlighting
+--// Studio Mobile Aim Assist
+--// Place this LocalScript in StarterPlayer > StarterPlayerScripts
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local flying = false
-local aimAssist = false
-local highlightsEnabled = false
-local flySpeed = 60
-local aimFOV = 150
-local aimSmoothness = 0.18
-local teamCheck = true
+local Settings = {
+	Enabled = false,
+	TargetLock = true,
+	TeamCheck = true,
+	WallCheck = true,
 
-local character, humanoid, root
+	FOV = 50,
+	Smoothness = 85,
+	Prediction = 0.05,
 
-local function setupCharacter(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	root = char:WaitForChild("HumanoidRootPart")
-end
+	HitPart = "Head"
+}
 
-if player.Character then
-	setupCharacter(player.Character)
-end
+local Target = nil
+local UIVisible = true
 
-player.CharacterAdded:Connect(setupCharacter)
+--------------------------------------------------
+-- CHARACTER / HIT PART
+--------------------------------------------------
 
--- GUI
-local gui = Instance.new("ScreenGui")
-gui.Name = "TrainingPanel"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
-
-local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(250, 330)
-main.Position = UDim2.new(0, 20, 0.5, -165)
-main.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-main.BorderSizePixel = 0
-main.Parent = gui
-
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 45)
-title.BackgroundTransparency = 1
-title.Text = "TRAINING PANEL"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.TextSize = 20
-title.Font = Enum.Font.GothamBold
-title.Parent = main
-
-local function makeButton(text, y)
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -30, 0, 42)
-	button.Position = UDim2.new(0, 15, 0, y)
-	button.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-	button.TextColor3 = Color3.new(1, 1, 1)
-	button.TextSize = 15
-	button.Font = Enum.Font.GothamSemibold
-	button.Text = text
-	button.AutoButtonColor = true
-	button.Parent = main
-
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
-
-	return button
-end
-
-local flyButton = makeButton("Fly: OFF", 55)
-local aimButton = makeButton("Aim Assist: OFF", 105)
-local espButton = makeButton("Highlights: OFF", 155)
-local teamButton = makeButton("Team Check: ON", 205)
-
-local speedLabel = Instance.new("TextLabel")
-speedLabel.Size = UDim2.new(1, -30, 0, 30)
-speedLabel.Position = UDim2.new(0, 15, 0, 260)
-speedLabel.BackgroundTransparency = 1
-speedLabel.Text = "Fly Speed: 60"
-speedLabel.TextColor3 = Color3.new(1, 1, 1)
-speedLabel.TextSize = 14
-speedLabel.Font = Enum.Font.Gotham
-speedLabel.Parent = main
-
-local speedDown = makeButton("-", 295)
-speedDown.Size = UDim2.fromOffset(100, 30)
-
-local speedUp = makeButton("+", 295)
-speedUp.Size = UDim2.fromOffset(100, 30)
-speedUp.Position = UDim2.new(1, -115, 0, 295)
-
--- FOV circle
-local fov = Instance.new("Frame")
-fov.Name = "FOV"
-fov.AnchorPoint = Vector2.new(0.5, 0.5)
-fov.Position = UDim2.fromScale(0.5, 0.5)
-fov.Size = UDim2.fromOffset(aimFOV * 2, aimFOV * 2)
-fov.BackgroundTransparency = 1
-fov.Visible = false
-fov.Parent = gui
-
-local stroke = Instance.new("UIStroke")
-stroke.Thickness = 2
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Parent = fov
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(1, 0)
-corner.Parent = fov
-
--- Fly
-local flyConnection
-
-local function stopFly()
-	flying = false
-
-	if flyConnection then
-		flyConnection:Disconnect()
-		flyConnection = nil
+local function GetHitPart(character)
+	if not character then
+		return nil
 	end
 
-	if humanoid then
-		humanoid.PlatformStand = false
+	local requested = character:FindFirstChild(Settings.HitPart)
+
+	if requested and requested:IsA("BasePart") then
+		return requested
 	end
+
+	-- R6 / R15 torso compatibility
+	if Settings.HitPart == "Torso" then
+		local torso = character:FindFirstChild("Torso")
+			or character:FindFirstChild("UpperTorso")
+
+		if torso then
+			return torso
+		end
+	end
+
+	if Settings.HitPart == "UpperTorso" then
+		local torso = character:FindFirstChild("UpperTorso")
+			or character:FindFirstChild("Torso")
+
+		if torso then
+			return torso
+		end
+	end
+
+	return character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("Head")
 end
 
-local function startFly()
-	if not root or not humanoid then return end
+--------------------------------------------------
+-- TARGET VALIDATION
+--------------------------------------------------
 
-	flying = true
-	humanoid.PlatformStand = true
+local function IsValidTarget(player)
+	if not player or player == LocalPlayer then
+		return false
+	end
 
-	flyConnection = RunService.RenderStepped:Connect(function()
-		if not flying or not root then return end
+	local character = player.Character
+	if not character then
+		return false
+	end
 
-		local move = Vector3.zero
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
 
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			move += camera.CFrame.LookVector
+	if Settings.TeamCheck and LocalPlayer.Team ~= nil then
+		if player.Team == LocalPlayer.Team then
+			return false
 		end
+	end
 
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			move -= camera.CFrame.LookVector
-		end
-
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			move -= camera.CFrame.RightVector
-		end
-
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			move += camera.CFrame.RightVector
-		end
-
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			move += Vector3.yAxis
-		end
-
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-			move -= Vector3.yAxis
-		end
-
-		-- Mobile thumbstick support
-		local direction = humanoid.MoveDirection
-
-		if direction.Magnitude > 0 then
-			move += direction
-		end
-
-		if move.Magnitude > 0 then
-			root.AssemblyLinearVelocity = move.Unit * flySpeed
-		else
-			root.AssemblyLinearVelocity = Vector3.zero
-		end
-	end)
+	return GetHitPart(character) ~= nil
 end
 
-flyButton.Activated:Connect(function()
-	if flying then
-		stopFly()
-		flyButton.Text = "Fly: OFF"
-	else
-		startFly()
-		flyButton.Text = "Fly: ON"
+--------------------------------------------------
+-- WALL CHECK
+--------------------------------------------------
+
+local function IsVisible(character, part)
+	if not Settings.WallCheck then
+		return true
 	end
-end)
 
--- Find closest target
-local function getTarget()
-	if not camera then return nil end
+	if not character or not part then
+		return false
+	end
 
-	local center = camera.ViewportSize / 2
+	local origin = Camera.CFrame.Position
+	local direction = part.Position - origin
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {
+		LocalPlayer.Character,
+		Camera
+	}
+	params.IgnoreWater = true
+
+	local result = workspace:Raycast(origin, direction, params)
+
+	if not result then
+		return true
+	end
+
+	return result.Instance:IsDescendantOf(character)
+end
+
+--------------------------------------------------
+-- TARGET FINDING
+--------------------------------------------------
+
+local function FindTarget()
 	local bestTarget = nil
-	local bestDistance = aimFOV
+	local bestDistance = Settings.FOV
 
-	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= player and other.Character then
-			local hum = other.Character:FindFirstChildOfClass("Humanoid")
-			local head = other.Character:FindFirstChild("Head")
+	local viewport = Camera.ViewportSize
+	local screenCenter = Vector2.new(
+		viewport.X / 2,
+		viewport.Y / 2
+	)
 
-			if hum and head and hum.Health > 0 then
-				if teamCheck and other.Team == player.Team then
-					continue
-				end
+	for _, player in ipairs(Players:GetPlayers()) do
+		if IsValidTarget(player) then
+			local character = player.Character
+			local part = GetHitPart(character)
 
-				local screenPos, visible =
-					camera:WorldToViewportPoint(head.Position)
+			if part then
+				local screenPosition, onScreen =
+					Camera:WorldToViewportPoint(part.Position)
 
-				if visible and screenPos.Z > 0 then
-					local distance = (
-						Vector2.new(screenPos.X, screenPos.Y) - center
-					).Magnitude
+				if onScreen and screenPosition.Z > 0 then
+					local screenPos = Vector2.new(
+						screenPosition.X,
+						screenPosition.Y
+					)
 
-					if distance < bestDistance then
-						bestDistance = distance
-						bestTarget = head
+					local distance =
+						(screenPos - screenCenter).Magnitude
+
+					if distance <= bestDistance then
+						if IsVisible(character, part) then
+							bestDistance = distance
+							bestTarget = player
+						end
 					end
 				end
 			end
@@ -227,89 +169,346 @@ local function getTarget()
 	return bestTarget
 end
 
--- Aim assist
-RunService.RenderStepped:Connect(function()
-	if aimAssist then
-		local target = getTarget()
+--------------------------------------------------
+-- TARGET LOCK VALIDATION
+--------------------------------------------------
 
-		if target then
-			local desired = CFrame.lookAt(
-				camera.CFrame.Position,
-				target.Position
-			)
-
-			camera.CFrame = camera.CFrame:Lerp(
-				desired,
-				aimSmoothness
-			)
-		end
+local function TargetStillValid(player)
+	if not IsValidTarget(player) then
+		return false
 	end
-end)
 
-aimButton.Activated:Connect(function()
-	aimAssist = not aimAssist
-	aimButton.Text = aimAssist and "Aim Assist: ON" or "Aim Assist: OFF"
-	fov.Visible = aimAssist
-end)
+	local character = player.Character
+	local part = GetHitPart(character)
 
--- Highlights
-local function updateHighlights()
-	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= player and other.Character then
-			local existing = other.Character:FindFirstChild("TrainingHighlight")
-
-			if highlightsEnabled then
-				if not existing then
-					local h = Instance.new("Highlight")
-					h.Name = "TrainingHighlight"
-					h.FillTransparency = 0.65
-					h.OutlineTransparency = 0
-					h.Parent = other.Character
-				end
-			elseif existing then
-				existing:Destroy()
-			end
-		end
+	if not part then
+		return false
 	end
+
+	local viewport = Camera.ViewportSize
+	local center = Vector2.new(
+		viewport.X / 2,
+		viewport.Y / 2
+	)
+
+	local position, onScreen =
+		Camera:WorldToViewportPoint(part.Position)
+
+	if not onScreen or position.Z <= 0 then
+		return false
+	end
+
+	local distance =
+		(Vector2.new(position.X, position.Y) - center).Magnitude
+
+	if distance > Settings.FOV then
+		return false
+	end
+
+	return IsVisible(character, part)
 end
 
-espButton.Activated:Connect(function()
-	highlightsEnabled = not highlightsEnabled
-	espButton.Text = highlightsEnabled
-		and "Highlights: ON"
-		or "Highlights: OFF"
+--------------------------------------------------
+-- AIM
+--------------------------------------------------
 
-	updateHighlights()
+local function AimAt(player, deltaTime)
+	if not player or not player.Character then
+		return
+	end
+
+	local part = GetHitPart(player.Character)
+
+	if not part then
+		return
+	end
+
+	local predictedPosition =
+		part.Position + (part.AssemblyLinearVelocity * Settings.Prediction)
+
+	local direction =
+		predictedPosition - Camera.CFrame.Position
+
+	if direction.Magnitude <= 0 then
+		return
+	end
+
+	local targetCFrame =
+		CFrame.lookAt(Camera.CFrame.Position, predictedPosition)
+
+	-- Higher Smoothness = stronger/faster aim
+	local strength =
+		math.clamp(Settings.Smoothness / 100, 0, 1)
+
+	local frameStrength =
+		1 - math.pow(1 - strength, deltaTime * 60)
+
+	Camera.CFrame =
+		Camera.CFrame:Lerp(targetCFrame, frameStrength)
+end
+
+--------------------------------------------------
+-- UI
+--------------------------------------------------
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StudioAimAssistUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+--------------------------------------------------
+-- FOV CIRCLE
+--------------------------------------------------
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+FOVCircle.Parent = ScreenGui
+
+local CircleCorner = Instance.new("UICorner")
+CircleCorner.CornerRadius = UDim.new(1, 0)
+CircleCorner.Parent = FOVCircle
+
+local CircleStroke = Instance.new("UIStroke")
+CircleStroke.Thickness = 2
+CircleStroke.Transparency = 0.15
+CircleStroke.Parent = FOVCircle
+
+--------------------------------------------------
+-- OPEN BUTTON
+--------------------------------------------------
+
+local OpenButton = Instance.new("TextButton")
+OpenButton.Name = "OpenButton"
+OpenButton.Size = UDim2.fromOffset(55, 55)
+OpenButton.Position = UDim2.new(0, 15, 0.5, -25)
+OpenButton.Text = "☰"
+OpenButton.TextSize = 25
+OpenButton.BackgroundTransparency = 0.15
+OpenButton.Parent = ScreenGui
+
+local OpenCorner = Instance.new("UICorner")
+OpenCorner.CornerRadius = UDim.new(0, 12)
+OpenCorner.Parent = OpenButton
+
+--------------------------------------------------
+-- PANEL
+--------------------------------------------------
+
+local Panel = Instance.new("Frame")
+Panel.Name = "Panel"
+Panel.Size = UDim2.fromOffset(250, 430)
+Panel.Position = UDim2.new(0, 80, 0.5, -215)
+Panel.BackgroundTransparency = 0.1
+Panel.Parent = ScreenGui
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 14)
+PanelCorner.Parent = Panel
+
+--------------------------------------------------
+-- TITLE
+--------------------------------------------------
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -50, 0, 45)
+Title.Position = UDim2.fromOffset(12, 5)
+Title.BackgroundTransparency = 1
+Title.Text = "Aim Assist"
+Title.TextSize = 20
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Panel
+
+--------------------------------------------------
+-- CLOSE
+--------------------------------------------------
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.fromOffset(40, 40)
+CloseButton.Position = UDim2.new(1, -45, 0, 5)
+CloseButton.Text = "×"
+CloseButton.TextSize = 25
+CloseButton.BackgroundTransparency = 1
+CloseButton.Parent = Panel
+
+--------------------------------------------------
+-- BUTTON CREATOR
+--------------------------------------------------
+
+local ButtonY = 55
+
+local function CreateButton(text)
+	local button = Instance.new("TextButton")
+
+	button.Size = UDim2.new(1, -20, 0, 42)
+	button.Position = UDim2.fromOffset(10, ButtonY)
+	button.Text = text
+	button.TextSize = 16
+	button.BackgroundTransparency = 0.15
+	button.Parent = Panel
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 9)
+	corner.Parent = button
+
+	ButtonY += 48
+
+	return button
+end
+
+--------------------------------------------------
+-- CONTROLS
+--------------------------------------------------
+
+local AimButton =
+	CreateButton("Aim Assist : OFF")
+
+local LockButton =
+	CreateButton("Target Lock : ON")
+
+local TeamButton =
+	CreateButton("Team Check : ON")
+
+local WallButton =
+	CreateButton("Wall Check : ON")
+
+local HitPartButton =
+	CreateButton("Hit Part : Head")
+
+local FOVButton =
+	CreateButton("FOV : 50")
+
+--------------------------------------------------
+-- BUTTON EVENTS
+--------------------------------------------------
+
+AimButton.Activated:Connect(function()
+	Settings.Enabled = not Settings.Enabled
+
+	if not Settings.Enabled then
+		Target = nil
+	end
+
+	AimButton.Text =
+		"Aim Assist : " ..
+		(Settings.Enabled and "ON" or "OFF")
 end)
 
-Players.PlayerAdded:Connect(function(other)
-	other.CharacterAdded:Connect(function()
-		task.wait(1)
-		updateHighlights()
-	end)
+LockButton.Activated:Connect(function()
+	Settings.TargetLock = not Settings.TargetLock
+
+	if not Settings.TargetLock then
+		Target = nil
+	end
+
+	LockButton.Text =
+		"Target Lock : " ..
+		(Settings.TargetLock and "ON" or "OFF")
 end)
 
-teamButton.Activated:Connect(function()
-	teamCheck = not teamCheck
-	teamButton.Text = teamCheck
-		and "Team Check: ON"
-		or "Team Check: OFF"
+TeamButton.Activated:Connect(function()
+	Settings.TeamCheck = not Settings.TeamCheck
+
+	Target = nil
+
+	TeamButton.Text =
+		"Team Check : " ..
+		(Settings.TeamCheck and "ON" or "OFF")
 end)
 
-speedDown.Activated:Connect(function()
-	flySpeed = math.max(10, flySpeed - 10)
-	speedLabel.Text = "Fly Speed: " .. flySpeed
+WallButton.Activated:Connect(function()
+	Settings.WallCheck = not Settings.WallCheck
+
+	Target = nil
+
+	WallButton.Text =
+		"Wall Check : " ..
+		(Settings.WallCheck and "ON" or "OFF")
 end)
 
-speedUp.Activated:Connect(function()
-	flySpeed = math.min(200, flySpeed + 10)
-	speedLabel.Text = "Fly Speed: " .. flySpeed
+HitPartButton.Activated:Connect(function()
+	if Settings.HitPart == "Head" then
+		Settings.HitPart = "Torso"
+	elseif Settings.HitPart == "Torso" then
+		Settings.HitPart = "HumanoidRootPart"
+	else
+		Settings.HitPart = "Head"
+	end
+
+	Target = nil
+
+	HitPartButton.Text =
+		"Hit Part : " .. Settings.HitPart
 end)
 
--- Keep FOV centered when screen size changes
-RunService.RenderStepped:Connect(function()
-	fov.Position = UDim2.fromScale(0.5, 0.5)
-	fov.Size = UDim2.fromOffset(aimFOV * 2, aimFOV * 2)
+-- 50 -> 60 -> 70 -> 80 -> 90 -> 100 -> 50
+FOVButton.Activated:Connect(function()
+	Settings.FOV += 10
+
+	if Settings.FOV > 100 then
+		Settings.FOV = 50
+	end
+
+	FOVButton.Text =
+		"FOV : " .. Settings.FOV
+
+	Target = nil
 end)
 
-print("Training Panel loaded.")
+--------------------------------------------------
+-- OPEN / CLOSE
+--------------------------------------------------
+
+CloseButton.Activated:Connect(function()
+	UIVisible = false
+	Panel.Visible = false
+end)
+
+OpenButton.Activated:Connect(function()
+	UIVisible = true
+	Panel.Visible = true
+end)
+
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
+
+RunService:BindToRenderStep(
+	"StudioMobileAimAssist",
+	Enum.RenderPriority.Camera.Value + 1,
+	function(deltaTime)
+
+		local viewport = Camera.ViewportSize
+
+		FOVCircle.Size = UDim2.fromOffset(
+			Settings.FOV * 2,
+			Settings.FOV * 2
+		)
+
+		FOVCircle.Position =
+			UDim2.fromOffset(
+				viewport.X / 2,
+				viewport.Y / 2
+			)
+
+		if not Settings.Enabled then
+			Target = nil
+			return
+		end
+
+		if Settings.TargetLock then
+			if not Target or not TargetStillValid(Target) then
+				Target = FindTarget()
+			end
+		else
+			Target = FindTarget()
+		end
+
+		if Target then
+			AimAt(Target, deltaTime)
+		end
+	end
+)
