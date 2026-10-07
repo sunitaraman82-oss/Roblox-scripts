@@ -16,7 +16,7 @@ local Settings = {
 
 	FOV = 50,
 	Smoothness = 100,
-	Prediction = 0.05,
+	Prediction = 0.08,
 
 	HitPart = "Head"
 }
