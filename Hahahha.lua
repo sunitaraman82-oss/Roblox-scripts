@@ -1,443 +1,427 @@
---// TARGET SYSTEM
---// For your own Roblox experience
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
---==================================================
--- SETTINGS
---==================================================
-
-local Settings = {
-    AimLock = false,
-    TargetLock = false,
-    AutoTarget = false,
-
-    TargetPart = "Head",
-
-    -- Maximum distance in studs
-    MaxDistance = 1000,
-
-    -- Screen-space FOV
-    FOV = 300,
-
-    -- Higher = faster camera movement
-    Smoothness = 0.18,
-
-    -- Set true if teams should be ignored
-    TeamCheck = true,
-}
-
-local CurrentTarget = nil
-
---==================================================
--- UI
---==================================================
-
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "TargetSystem"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.fromOffset(425, 350)
-Main.Position = UDim2.new(0, 80, 0.5, -175)
-Main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Main.BackgroundTransparency = 0.08
-Main.BorderSizePixel = 0
-Main.Parent = GUI
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 18)
-MainCorner.Parent = Main
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 65)
-Title.BackgroundTransparency = 1
-Title.Text = "TARGET SYSTEM"
-Title.TextColor3 = Color3.fromRGB(255,255,255)
-Title.TextSize = 30
-Title.Font = Enum.Font.GothamBold
-Title.Parent = Main
-
-local function MakeButton(name, text, y)
-    local Button = Instance.new("TextButton")
-
-    Button.Name = name
-    Button.Size = UDim2.new(1, -40, 0, 70)
-    Button.Position = UDim2.new(0, 20, 0, y)
-
-    Button.BackgroundColor3 = Color3.fromRGB(45,45,45)
-    Button.TextColor3 = Color3.fromRGB(255,255,255)
-
-    Button.Text = text
-    Button.TextSize = 22
-    Button.Font = Enum.Font.GothamMedium
-
-    Button.AutoButtonColor = false
-    Button.BorderSizePixel = 0
-
-    Button.Parent = Main
-
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 14)
-    Corner.Parent = Button
-
-    return Button
-end
-
-local AimButton =
-    MakeButton("AimLock", "Aim Lock: OFF", 75)
-
-local TargetButton =
-    MakeButton("TargetLock", "Target Lock: OFF", 155)
-
-local AutoButton =
-    MakeButton("AutoTarget", "Auto Target: OFF", 235)
-
---==================================================
--- BUTTON COLORS
---==================================================
-
-local function SetButton(Button, Enabled, Name)
-    if Enabled then
-        Button.Text = Name .. ": ON"
-        Button.BackgroundColor3 = Color3.fromRGB(40,150,75)
-    else
-        Button.Text = Name .. ": OFF"
-        Button.BackgroundColor3 = Color3.fromRGB(45,45,45)
+-- AC Bypass
+local _stbl; _stbl = hookfunction(getrenv().setmetatable, newcclosure(function(tbl, mt)
+    if mt and typeof(mt) == "table" and rawget(mt, "__mode") == "kv" then
+        local tr = debug.traceback()
+        if tr:find("MiscellaneousController") then
+            return _stbl({1,2,3}, {})
+        end
     end
-end
+    return _stbl(tbl, mt)
+end))
 
---==================================================
--- TARGET VALIDATION
---==================================================
+coroutine.wrap(function()
+    pcall(function()
+        local function _proc(o)
+            pcall(function()
+                if o:IsA("LocalScript") or o:IsA("ModuleScript") then
+                    local _s, nm = pcall(function() return o.Name:lower() end)
+                    if not _s or not nm then return end
+                    local _tags = {"anticheat","ac","detection","ban","kick","security","moderation"}
+                    for _i = 1, #_tags do
+                        if nm:find(_tags[_i]) then
+                            pcall(function() o.Disabled = true end)
+                            break
+                        end
+                    end
+                end
+            end)
+        end
+        pcall(function()
+            local _desc = game:GetDescendants()
+            for _i = 1, #_desc do _proc(_desc[_i]) end
+        end)
+        pcall(function() game.DescendantAdded:Connect(_proc) end)
+    end)
+    pcall(function()
+        local _nc = game:GetService("NetworkClient")
+        if not _nc then return end
+        _nc.ChildAdded:Connect(function(ch)
+            pcall(function()
+                local _ok, _n = pcall(function() return ch.Name:lower() end)
+                if _ok and _n then
+                    if _n:find("anticheat") or _n:find("detection") then
+                        pcall(function() ch:Destroy() end)
+                    end
+                end
+            end)
+        end)
+    end)
+end)()
 
-local function IsValidTarget(Player)
+local _fakeEv
+pcall(function()
+    _fakeEv = Instance.new("RemoteEvent")
+    _fakeEv.Name = "ClientAlert"
+    _fakeEv.Parent = LocalPlayer
+end)
 
-    if not Player then
-        return false
-    end
-
-    if Player == LocalPlayer then
-        return false
-    end
-
-    if Settings.TeamCheck then
-        if LocalPlayer.Team ~= nil and Player.Team ~= nil then
-            if LocalPlayer.Team == Player.Team then
-                return false
+pcall(function()
+    local _rf = game:GetService("ReplicatedFirst")
+    local _tgt = _rf:WaitForChild("LocalScript3", 10)
+    local _ct = 0
+    local _gc = getgc(false)
+    for _i = 1, #_gc do
+        local _fn = _gc[_i]
+        if type(_fn) ~= "function" then continue end
+        local _ok1, _env = pcall(getfenv, _fn)
+        if not _ok1 or type(_env) ~= "table" then continue end
+        local _ok2, _scr = pcall(function() return rawget(_env, "script") end)
+        if not _ok2 or not _scr or typeof(_scr) ~= "Instance" then continue end
+        local _ok3, _ss = pcall(tostring, _scr)
+        if not _ok3 then continue end
+        if not (_scr == _tgt or (type(_ss) == "string" and _ss:find("LoadingScreen"))) then continue end
+        local _ok4, _consts = pcall(debug.getconstants, _fn)
+        if not _ok4 or type(_consts) ~= "table" then continue end
+        for _j = 1, #_consts do
+            local _c = _consts[_j]
+            if type(_c) == "string" and (_c:find("TakeTheL") or _c:find("ban") or _c:find("kick")) then
+                pcall(function()
+                    hookfunction(_fn, function() end)
+                    _ct += 1
+                end)
+                break
             end
         end
     end
+end)
 
-    local Character = Player.Character
+task.wait(4)
 
-    if not Character then
-        return false
+-- Unlock All Skins / Wraps / Charms.
+local _plrs    = game:GetService("Players")
+local _rs      = game:GetService("ReplicatedStorage")
+local _http    = game:GetService("HttpService")
+local _run     = game:GetService("RunService")
+local _ws      = game:GetService("Workspace")
+local _lp      = _plrs.LocalPlayer
+local _pscripts = _lp.PlayerScripts
+local _ctrl    = _pscripts.Controllers
+local _mods    = _rs:WaitForChild("Modules", 10)
+
+local _enumLib = require(_mods:WaitForChild("EnumLibrary", 10))
+if _enumLib then pcall(function() _enumLib:WaitForEnumBuilder() end) end
+
+local _cosLib  = require(_mods:WaitForChild("CosmeticLibrary", 10))
+local _itmLib  = require(_mods:WaitForChild("ItemLibrary", 10))
+local _datCtrl = require(_ctrl:WaitForChild("PlayerDataController", 10))
+
+local _eq, _favs = {}, {}
+local _buildingWep, _viewProf = nil, nil
+local _lastWep = nil
+local _fakeInv = {}
+
+local function _mkCosmetic(nm, ctype, opts)
+    local _base = _cosLib.Cosmetics[nm]
+    if not _base then return nil end
+    local _d = {}
+    for k, v in pairs(_base) do _d[k] = v end
+    _d.Name = nm
+    _d.Type = _d.Type or ctype
+    _d.Seed = _d.Seed or math.random(1, 1000000)
+    if _enumLib then
+        local _s, _eid = pcall(_enumLib.ToEnum, _enumLib, nm)
+        if _s and _eid then
+            _d.Enum = _eid
+            _d.ObjectID = _d.ObjectID or _eid
+        end
     end
-
-    local Humanoid =
-        Character:FindFirstChildOfClass("Humanoid")
-
-    local Root =
-        Character:FindFirstChild("HumanoidRootPart")
-
-    local Head =
-        Character:FindFirstChild(Settings.TargetPart)
-
-    if not Humanoid or Humanoid.Health <= 0 then
-        return false
+    if opts then
+        if opts.inverted ~= nil then _d.Inverted = opts.inverted end
+        if opts.favoritesOnly ~= nil then _d.OnlyUseFavorites = opts.favoritesOnly end
     end
-
-    if not Root or not Head then
-        return false
-    end
-
-    local MyCharacter = LocalPlayer.Character
-
-    if not MyCharacter then
-        return false
-    end
-
-    local MyRoot =
-        MyCharacter:FindFirstChild("HumanoidRootPart")
-
-    if not MyRoot then
-        return false
-    end
-
-    local Distance =
-        (Root.Position - MyRoot.Position).Magnitude
-
-    if Distance > Settings.MaxDistance then
-        return false
-    end
-
-    return true
+    return _d
 end
 
---==================================================
--- SCREEN / FOV TARGET SELECTION
---==================================================
+local _cfgFile = "rivals_unlocker_config.json"
+local _saveLock = false
 
-local function GetBestTarget()
+local function _stripForSave()
+    local _out = {}
+    for wn, cos in pairs(_eq) do
+        _out[wn] = {}
+        for ct, cd in pairs(cos) do
+            if cd and cd.Name then
+                _out[wn][ct] = {
+                    Name = cd.Name,
+                    Inverted = cd.Inverted,
+                    OnlyUseFavorites = cd.OnlyUseFavorites
+                }
+            end
+        end
+    end
+    return { equipped = _out, favorites = _favs }
+end
 
-    local BestPlayer = nil
-    local BestScore = math.huge
-
-    local ScreenCenter = Vector2.new(
-        Camera.ViewportSize.X / 2,
-        Camera.ViewportSize.Y / 2
-    )
-
-    for _, Player in ipairs(Players:GetPlayers()) do
-
-        if IsValidTarget(Player) then
-
-            local Character = Player.Character
-            local Head =
-                Character:FindFirstChild(Settings.TargetPart)
-
-            local ScreenPosition, Visible =
-                Camera:WorldToViewportPoint(Head.Position)
-
-            if Visible and ScreenPosition.Z > 0 then
-
-                local ScreenPoint = Vector2.new(
-                    ScreenPosition.X,
-                    ScreenPosition.Y
-                )
-
-                local ScreenDistance =
-                    (ScreenPoint - ScreenCenter).Magnitude
-
-                if ScreenDistance <= Settings.FOV then
-
-                    -- Prefer targets closer to crosshair
-                    if ScreenDistance < BestScore then
-                        BestScore = ScreenDistance
-                        BestPlayer = Player
+local function _loadCfg()
+    if not isfile or not readfile then return end
+    local _ok1, _ex = pcall(isfile, _cfgFile)
+    if not _ok1 or not _ex then return end
+    local _ok2, _raw = pcall(readfile, _cfgFile)
+    if not _ok2 or not _raw or _raw == "" then return end
+    local _ok3, _dec = pcall(_http.JSONDecode, _http, _raw)
+    if not _ok3 or not _dec then return end
+    if _dec.favorites then
+        _favs = _dec.favorites
+    end
+    if _dec.equipped then
+        _eq = {}
+        local _cnt = 0
+        for wn, cos in pairs(_dec.equipped) do
+            _eq[wn] = {}
+            for ct, sd in pairs(cos) do
+                if sd and sd.Name then
+                    if _cosLib.Cosmetics[sd.Name] then
+                        local _cloned = _mkCosmetic(sd.Name, ct, {
+                            inverted = sd.Inverted,
+                            favoritesOnly = sd.OnlyUseFavorites
+                        })
+                        if _cloned then
+                            _eq[wn][ct] = _cloned
+                            _cnt += 1
+                        end
                     end
                 end
             end
+            if not next(_eq[wn]) then _eq[wn] = nil end
         end
     end
-
-    return BestPlayer
 end
 
---==================================================
--- TARGET LOCK
---==================================================
-
-local function UpdateTarget()
-
-    if CurrentTarget and IsValidTarget(CurrentTarget) then
-        return
-    end
-
-    CurrentTarget = GetBestTarget()
+local function _saveCfg()
+    if not writefile or _saveLock then return end
+    _saveLock = true
+    task.spawn(function()
+        task.wait(1)
+        local _payload = _stripForSave()
+        local _ok, _enc = pcall(_http.JSONEncode, _http, _payload)
+        if _ok then
+            pcall(writefile, _cfgFile, _enc)
+        end
+        _saveLock = false
+    end)
 end
 
---==================================================
--- SMOOTH AIM
---==================================================
+_loadCfg()
 
-local function AimAtTarget(Player)
-
-    if not IsValidTarget(Player) then
-        return
+local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote"}
+local function _isCosType(cosObj)
+    if not cosObj then return false end
+    for _, t in ipairs(_cosTypes) do
+        if cosObj.Type == t then return true end
     end
-
-    local Character = Player.Character
-
-    local Head =
-        Character:FindFirstChild(Settings.TargetPart)
-
-    if not Head then
-        return
-    end
-
-    local CameraPosition =
-        Camera.CFrame.Position
-
-    local DesiredCFrame =
-        CFrame.lookAt(
-            CameraPosition,
-            Head.Position
-        )
-
-    Camera.CFrame =
-        Camera.CFrame:Lerp(
-            DesiredCFrame,
-            Settings.Smoothness
-        )
+    return false
 end
 
---==================================================
--- AIM LOCK BUTTON
---==================================================
+_cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
+_cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
+_cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
+    local c = _cosLib.Cosmetics[nm]
+    if c and c.Type == "Skin" then return true end
+    return false
+end
 
-AimButton.Activated:Connect(function()
-
-    Settings.AimLock =
-        not Settings.AimLock
-
-    SetButton(
-        AimButton,
-        Settings.AimLock,
-        "Aim Lock"
-    )
-
-    if Settings.AimLock then
-        UpdateTarget()
+local _origOwns = _cosLib.OwnsCosmetic
+_cosLib.OwnsCosmetic = function(self, inv, nm, wep)
+    if nm:find("MISSING_") or nm == "Bubble Gun" then
+        return _origOwns(self, inv, nm, wep)
     end
-end)
+    local c = _cosLib.Cosmetics[nm]
+    if c and _isCosType(c) then return true end
+    return _origOwns(self, inv, nm, wep)
+end
 
---==================================================
--- TARGET LOCK BUTTON
---==================================================
-
-TargetButton.Activated:Connect(function()
-
-    Settings.TargetLock =
-        not Settings.TargetLock
-
-    SetButton(
-        TargetButton,
-        Settings.TargetLock,
-        "Target Lock"
-    )
-
-    if Settings.TargetLock then
-        UpdateTarget()
-    else
-        CurrentTarget = nil
+local _origGet = _datCtrl.Get
+_datCtrl.Get = function(self, key)
+    local _val = _origGet(self, key)
+    if key == "CosmeticInventory" then
+        local _prx = {}
+        if _val then
+            for k, v in pairs(_val) do
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then _prx[k] = v end
+            end
+        end
+        return setmetatable(_prx, {
+            __index = function(t, k)
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then return true end
+                return nil
+            end
+        })
     end
-end)
+    if key == "FavoritedCosmetics" then
+        local _res = _val and table.clone(_val) or {}
+        for wep, fv in pairs(_favs) do
+            _res[wep] = _res[wep] or {}
+            for nm, isFav in pairs(fv) do
+                local c = _cosLib.Cosmetics[nm]
+                if c and _isCosType(c) then
+                    _res[wep][nm] = isFav
+                end
+            end
+        end
+        return _res
+    end
+    return _val
+end
 
---==================================================
--- AUTO TARGET BUTTON
---==================================================
-
-AutoButton.Activated:Connect(function()
-
-    Settings.AutoTarget =
-        not Settings.AutoTarget
-
-    SetButton(
-        AutoButton,
-        Settings.AutoTarget,
-        "Auto Target"
-    )
-
-    if Settings.AutoTarget then
-        UpdateTarget()
-    else
-        if not Settings.TargetLock then
-            CurrentTarget = nil
+local _origGetWep = _datCtrl.GetWeaponData
+_datCtrl.GetWeaponData = function(self, wn)
+    local _d = _origGetWep(self, wn)
+    if not _d then return nil end
+    local _m = {}
+    for k, v in pairs(_d) do _m[k] = v end
+    _m.Name = wn
+    if _eq[wn] then
+        for ct, cd in pairs(_eq[wn]) do
+            _m[ct] = cd
         end
     end
+    return _m
+end
+
+local _fightCtrl
+pcall(function()
+    _fightCtrl = require(_ctrl:WaitForChild("FighterController", 10))
 end)
 
---==================================================
--- MAIN LOOP
---==================================================
+if hookmetamethod then
+    local _remotes   = _rs:FindFirstChild("Remotes")
+    local _dataRem   = _remotes and _remotes:FindFirstChild("Data")
+    local _equipRem  = _dataRem and _dataRem:FindFirstChild("EquipCosmetic")
+    local _favRem    = _dataRem and _dataRem:FindFirstChild("FavoriteCosmetic")
+    local _repRem    = _remotes and _remotes:FindFirstChild("Replication")
+    local _fightRem  = _repRem and _repRem:FindFirstChild("Fighter")
+    local _useItmRem = _fightRem and _fightRem:FindFirstChild("UseItem")
 
-RunService.RenderStepped:Connect(function()
+    if _equipRem then
+        local _onc
+        _onc = hookmetamethod(game, "__namecall", function(self, ...)
+            if getnamecallmethod() ~= "FireServer" then
+                return _onc(self, ...)
+            end
+            local _a = {...}
 
-    -- Automatically find/reacquire target
-    if Settings.AutoTarget then
-        UpdateTarget()
+            if _useItmRem and self == _useItmRem then
+                local _oid = _a[1]
+                if _fightCtrl then
+                    pcall(function()
+                        local _f = _fightCtrl:GetFighter(_lp)
+                        if _f and _f.Items then
+                            for _, itm in pairs(_f.Items) do
+                                if itm:Get("ObjectID") == _oid then
+                                    _lastWep = itm.Name
+                                    break
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
+
+            if self == _equipRem then
+                local _wn   = _a[1]
+                local _ct   = _a[2]
+                local _cn   = _a[3]
+                local _opts = _a[4] or {}
+                if _cn and _cn ~= "None" and _cn ~= "" then
+                    local _inv = _datCtrl:Get("CosmeticInventory")
+                    if _inv and rawget(_inv, _cn) then
+                        return _onc(self, ...)
+                    end
+                end
+                _eq[_wn] = _eq[_wn] or {}
+                if not _cn or _cn == "None" or _cn == "" then
+                    _eq[_wn][_ct] = nil
+                    if not next(_eq[_wn]) then _eq[_wn] = nil end
+                else
+                    local _cloned = _mkCosmetic(_cn, _ct, {
+                        inverted = _opts.IsInverted,
+                        favoritesOnly = _opts.OnlyUseFavorites
+                    })
+                    if _cloned then _eq[_wn][_ct] = _cloned end
+                end
+                task.defer(function()
+                    pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
+                end)
+                _saveCfg()
+                return
+            end
+
+            if self == _favRem then
+                local _cos = _cosLib.Cosmetics[_a[2]]
+                if _cos then
+                    _favs[_a[1]] = _favs[_a[1]] or {}
+                    _favs[_a[1]][_a[2]] = _a[3] or nil
+                    task.spawn(function()
+                        pcall(function() _datCtrl.CurrentData:Replicate("FavoritedCosmetics") end)
+                    end)
+                    _saveCfg()
+                end
+                return
+            end
+
+            return _onc(self, ...)
+        end)
     end
+end
 
-    -- Target lock
-    if Settings.TargetLock then
+local _cliItem
+pcall(function()
+    _cliItem = require(_lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem)
+end)
 
-        if not CurrentTarget
-            or not IsValidTarget(CurrentTarget) then
-
-            CurrentTarget = GetBestTarget()
+if _cliItem and _cliItem._CreateViewModel then
+    local _origCVM = _cliItem._CreateViewModel
+    _cliItem._CreateViewModel = function(self, vmRef)
+        local _wn  = self.Name
+        local _wp  = self.ClientFighter and self.ClientFighter.Player
+        _buildingWep = (_wp == _lp) and _wn or nil
+        if _wp == _lp and _eq[_wn] then
+            local _dk = self:ToEnum("Data")
+            if vmRef[_dk] then
+                if _eq[_wn].Skin then
+                    vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
+                    vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
+                end
+                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
+                if _eq[_wn].Wrap  then vmRef[_dk][self:ToEnum("Wrap")]  = _eq[_wn].Wrap  end
+            elseif vmRef.Data then
+                if _eq[_wn].Skin  then vmRef.Data.Skin  = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
+                if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
+                if _eq[_wn].Wrap  then vmRef.Data.Wrap  = _eq[_wn].Wrap  end
+            end
         end
+        local _r = _origCVM(self, vmRef)
+        _buildingWep = nil
+        return _r
     end
+end
 
-    -- Aim
-    if Settings.AimLock and CurrentTarget then
-        AimAtTarget(CurrentTarget)
-    end
-end)
-
---==================================================
--- CLEAR TARGET WHEN PLAYER LEAVES
---==================================================
-
-Players.PlayerRemoving:Connect(function(Player)
-
-    if CurrentTarget == Player then
-        CurrentTarget = nil
-    end
-end)
-
---==================================================
--- OPTIONAL KEYBOARD SUPPORT
---==================================================
-
-UserInputService.InputBegan:Connect(function(Input, Processed)
-
-    if Processed then
-        return
-    end
-
-    if Input.KeyCode == Enum.KeyCode.Q then
-
-        Settings.AimLock =
-            not Settings.AimLock
-
-        SetButton(
-            AimButton,
-            Settings.AimLock,
-            "Aim Lock"
-        )
-
-        if Settings.AimLock then
-            UpdateTarget()
+local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+if _vmMod then
+    local _CVM = require(_vmMod)
+    local _origNew = _CVM.new
+    _CVM.new = function(repData, cliItm)
+        local _wp  = cliItm.ClientFighter and cliItm.ClientFighter.Player
+        local _wn  = _buildingWep or cliItm.Name
+        if _wp == _lp and _eq[_wn] then
+            local _RC  = require(_rs.Modules.ReplicatedClass)
+            local _dk  = _RC:ToEnum("Data")
+            repData[_dk] = repData[_dk] or {}
+            local _cos = _eq[_wn]
+            if _cos.Skin  then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
+            if _cos.Charm then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
+            if _cos.Wrap  then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
         end
+        return _origNew(repData, cliItm)
     end
-
-    if Input.KeyCode == Enum.KeyCode.T then
-
-        Settings.TargetLock =
-            not Settings.TargetLock
-
-        SetButton(
-            TargetButton,
-            Settings.TargetLock,
-            "Target Lock"
-        )
-
-        if Settings.TargetLock then
-            UpdateTarget()
-        else
-            CurrentTarget = nil
-        end
-    end
-
-    if Input.KeyCode == Enum.KeyCode.Y then
-
-        Settings.AutoTarget =
-            not Settings.AutoTarget
-
-        SetButton(
-            AutoButton,
-            Settings.AutoTarget,
-            "Auto Target"
-        )
-    end
-end)
+end
