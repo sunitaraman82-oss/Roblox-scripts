@@ -14,9 +14,9 @@ local Settings = {
 	TeamCheck = true,
 	WallCheck = true,
 
-	FOV = 50,
-	Smoothness = 100,
-	Prediction = 0.08,
+	FOV = 100,
+	Smoothness = 1000,
+	Prediction = 1.00,
 
 	HitPart = "Head"
 }
