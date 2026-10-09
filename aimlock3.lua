@@ -1,684 +1,801 @@
-local L_1_ = {};
-L_1_["1"] = Instance.new("ScreenGui", cloneref(game:GetService("CoreGui") or gethui()));
-L_1_["1"]["Name"] = [[Z3US Loader]];
-L_1_["1"]["ZIndexBehavior"] = Enum.ZIndexBehavior.Global;
-L_1_["1"]["ResetOnSpawn"] = false;
-local TweenService = cloneref(game:GetService("TweenService"))
-local EASE_QUAD = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local EASE_THUMB = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local BG_DARK = Color3.fromRGB(10, 10, 14)
-local BG_MAIN = Color3.fromRGB(14, 14, 20)
-local BG_PANEL = Color3.fromRGB(18, 18, 26)
-local BG_ROW = Color3.fromRGB(20, 20, 30)
-local BG_ROW_SEL = Color3.fromRGB(22, 22, 40)
-local ACCENT = Color3.fromRGB(19, 0, 255)
-local ACCENT_DIM = Color3.fromRGB(12, 0, 170)
-local BORDER = Color3.fromRGB(32, 32, 50)
-local BORDER_SEL = Color3.fromRGB(19, 0, 255)
-local TEXT_MAIN = Color3.fromRGB(230, 230, 240)
-local TEXT_DIM = Color3.fromRGB(110, 110, 140)
-local TEXT_LABEL = Color3.fromRGB(160, 160, 190)
-local BLACK = Color3.fromRGB(0, 0, 0)
-local WHITE = Color3.fromRGB(255, 255, 255)
-local BTN_OFF = Color3.fromRGB(35, 35, 55)
-local GREEN_DIM = Color3.fromRGB(30, 180, 100)
-local FONT_MAIN = Enum.Font.Code
-local CORNER_SM = UDim.new(0, 2)
-local CORNER_MED = UDim.new(0, 3)
-local FILL_LOADING = Color3.fromRGB(140, 120, 255)
-local FILL_OK = Color3.fromRGB(70, 225, 135)
-local FILL_ERR = Color3.fromRGB(235, 75, 75)
-local BTN_ERR = Color3.fromRGB(150, 35, 45)
-
-function make(cls, props, parent)
-	local i = Instance.new(cls)
-	if parent then
-		i.Parent = parent
-	end
-	for k, v in props do
-		i[k] = v
-	end
-	return i
-end
-function corner(r, p)
-	return make("UICorner", {
-		CornerRadius = r
-	}, p)
-end
-function stroke(col, thick, p)
-	local s = make("UIStroke", {
-		Color = col,
-		Thickness = thick,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	}, p)
-	return s
-end
-function label(props, parent)
-	local l = make("TextLabel", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Font = FONT_MAIN,
-		TextColor3 = TEXT_MAIN,
-		TextSize = 14,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-	}, parent)
-	for k, v in props do
-		l[k] = v
-	end
-	return l
-end
-function btn(props, parent)
-	local b = make("TextButton", {
-		BackgroundTransparency = 0,
-		BorderSizePixel = 0,
-		Font = FONT_MAIN,
-		TextColor3 = WHITE,
-		TextSize = 14,
-		AutoButtonColor = false,
-	}, parent)
-	for k, v in props do
-		b[k] = v
-	end
-	return b
+if not game then
+  print("This script requires the Roblox environment; the standard Lua sandbox does not provide 'game'.")
+  return
 end
 
-local Root = make("Frame", {
-	BackgroundColor3 = BG_DARK,
-	BorderSizePixel = 0,
-	Size = UDim2.fromOffset(620, 480),
-	Position = UDim2.new(0.5, -310, 0.5, -240),
-	ClipsDescendants = true,
-}, L_1_["1"])
-corner(CORNER_MED, Root)
-stroke(ACCENT, 1.5, Root)
+local players = game:GetService("Players")
 
-local TopBar = make("Frame", {
-	BackgroundColor3 = BG_MAIN,
-	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 32),
-}, Root)
+local function helper()
+  local currentCamera = workspace.CurrentCamera
 
-make("Frame", {
-	BackgroundColor3 = ACCENT,
-	BorderSizePixel = 0,
-	Position = UDim2.new(0, 0, 1, -1),
-	Size = UDim2.new(1, 0, 0, 1),
-}, TopBar)
+  if not currentCamera then
 
-label({
-	Text = "Z3US PROJECTS",
-	TextColor3 = TEXT_MAIN,
-	TextSize = 13,
-	Size = UDim2.new(1, -60, 1, 0),
-	Position = UDim2.fromOffset(12, 0),
-	Font = FONT_MAIN,
-}, TopBar)
+    currentCamera = (workspace:FindFirstChildOfClass("Camera")) or workspace.CurrentCamera
+  end
 
-local CloseBtn = btn({
-	Text = "×",
-	TextSize = 20,
-	BackgroundColor3 = Color3.fromRGB(14, 14, 20),
-	Size = UDim2.fromOffset(28, 28),
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, 0, 0, 0),
-}, TopBar)
-corner(UDim.new(0, 0), CloseBtn)
-
-local LeftPanel = make("Frame", {
-	BackgroundColor3 = BG_PANEL,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(0, 32),
-	Size = UDim2.new(0, 220, 1, -32),
-}, Root)
-make("Frame", {
-	BackgroundColor3 = BORDER,
-	BorderSizePixel = 0,
-	Position = UDim2.new(1, -1, 0, 0),
-	Size = UDim2.fromOffset(1, 9999),
-}, LeftPanel)
-
-label({
-	Text = "GAMES",
-	TextColor3 = TEXT_DIM,
-	TextSize = 11,
-	Size = UDim2.new(1, -16, 0, 24),
-	Position = UDim2.fromOffset(12, 6),
-	Font = FONT_MAIN,
-}, LeftPanel)
-
-local GameScroll = make("ScrollingFrame", {
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(0, 32),
-	Size = UDim2.new(1, 0, 1, -32),
-	CanvasSize = UDim2.new(0, 0, 0, 0),
-	AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ScrollBarThickness = 2,
-	ScrollBarImageColor3 = ACCENT,
-	TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
-	BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
-}, LeftPanel)
-
-local GameLayout = make("UIListLayout", {
-	Padding = UDim.new(0, 2),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-}, GameScroll)
-
-make("UIPadding", {
-	PaddingLeft = UDim.new(0, 6),
-	PaddingRight = UDim.new(0, 6),
-	PaddingTop = UDim.new(0, 4),
-	PaddingBottom = UDim.new(0, 4),
-}, GameScroll)
-
-local RightPanel = make("Frame", {
-	BackgroundColor3 = BG_MAIN,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(220, 32),
-	Size = UDim2.new(1, -220, 1, -32),
-}, Root)
-
-local PreviewArea = make("Frame", {
-	BackgroundColor3 = BG_PANEL,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(16, 16),
-	Size = UDim2.new(1, -32, 0, 180),
-}, RightPanel)
-corner(CORNER_SM, PreviewArea)
-stroke(BORDER, 1, PreviewArea)
-
-make("Frame", {
-	BackgroundColor3 = ACCENT,
-	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 2),
-}, PreviewArea)
-
-local PreviewIcon = make("ImageLabel", {
-	BackgroundTransparency = 1,
-	Image = [[rbxassetid://92661965333918]],
-	Size = UDim2.fromOffset(72, 72),
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 20),
-}, PreviewArea)
-
-local SelectedLabel = label({
-	Text = "No script selected",
-	TextColor3 = TEXT_MAIN,
-	TextSize = 16,
-	Size = UDim2.new(1, -20, 0, 22),
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 102),
-	TextXAlignment = Enum.TextXAlignment.Center,
-	Font = FONT_MAIN,
-}, PreviewArea)
-
-local SubLabel = label({
-	Text = "select a game from the list",
-	TextColor3 = TEXT_DIM,
-	TextSize = 12,
-	Size = UDim2.new(1, -20, 0, 16),
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 126),
-	TextXAlignment = Enum.TextXAlignment.Center,
-}, PreviewArea)
-
-local OptionsArea = make("Frame", {
-	BackgroundColor3 = BG_PANEL,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(16, 212),
-	Size = UDim2.new(1, -32, 0, 178),
-}, RightPanel)
-corner(CORNER_SM, OptionsArea)
-stroke(BORDER, 1, OptionsArea)
-make("Frame", {
-	BackgroundColor3 = BORDER,
-	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 1)
-}, OptionsArea)
-
-label({
-	Text = "OPTIONS",
-	TextColor3 = TEXT_DIM,
-	TextSize = 11,
-	Size = UDim2.new(1, -16, 0, 28),
-	Position = UDim2.fromOffset(12, 0),
-}, OptionsArea)
-
-local RivalsBlock = make("Frame", {
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(0, 30),
-	Size = UDim2.new(1, 0, 0, 138),
-	Visible = false,
-}, OptionsArea)
-
-local VerLabel = label({
-	Text = "Version",
-	TextColor3 = TEXT_LABEL,
-	TextSize = 13,
-	Size = UDim2.new(0, 100, 0, 28),
-	Position = UDim2.fromOffset(12, 0),
-}, RivalsBlock)
-
-local V1Btn = btn({
-	Text = "V1",
-	BackgroundColor3 = BTN_OFF,
-	Size = UDim2.fromOffset(52, 24),
-	Position = UDim2.fromOffset(110, 4),
-	TextSize = 13,
-}, RivalsBlock)
-corner(CORNER_SM, V1Btn)
-
-local V2Btn = btn({
-	Text = "V2",
-	BackgroundColor3 = ACCENT,
-	Size = UDim2.fromOffset(52, 24),
-	Position = UDim2.fromOffset(168, 4),
-	TextSize = 13,
-}, RivalsBlock)
-corner(CORNER_SM, V2Btn)
-
-local RivalsRow = make("Frame", {
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(0, 38),
-	Size = UDim2.new(1, 0, 0, 100),
-}, RivalsBlock)
-
-function makeToggleRow(parent, yPos, labelText, defaultOn)
-	local row = make("Frame", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(12, yPos),
-		Size = UDim2.new(1, -24, 0, 26),
-	}, parent)
-
-	label({
-		Text = labelText,
-		TextColor3 = TEXT_LABEL,
-		TextSize = 13,
-		Size = UDim2.new(0.6, 0, 1, 0),
-	}, row)
-
-	local OFF_POS = UDim2.fromOffset(2, 9)
-	local ON_POS = UDim2.fromOffset(22, 9)
-
-	local track = make("Frame", {
-		BackgroundColor3 = defaultOn and ACCENT or BTN_OFF,
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(40, 18),
-	}, row)
-	corner(UDim.new(0, 9), track)
-
-	local thumb = make("Frame", {
-		BackgroundColor3 = WHITE,
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = defaultOn and ON_POS or OFF_POS,
-		Size = UDim2.fromOffset(14, 14),
-	}, track)
-	corner(UDim.new(0.5, 0), thumb)
-
-	local state = defaultOn
-	local trackTween, thumbTween
-
-	local function render(animate)
-		if trackTween then trackTween:Cancel() end
-		if thumbTween then thumbTween:Cancel() end
-
-		local targetColor = state and ACCENT or BTN_OFF
-		local targetPos = state and ON_POS or OFF_POS
-
-		if animate then
-			trackTween = TweenService:Create(track, EASE_QUAD, { BackgroundColor3 = targetColor })
-			thumbTween = TweenService:Create(thumb, EASE_THUMB, { Position = targetPos })
-			trackTween:Play()
-			thumbTween:Play()
-		else
-			track.BackgroundColor3 = targetColor
-			thumb.Position = targetPos
-		end
-	end
-
-	local btn2 = make("TextButton", {
-		BackgroundTransparency = 1,
-		Text = "",
-		Size = UDim2.fromScale(1, 1),
-	}, row)
-
-	btn2.MouseButton1Click:Connect(function()
-		state = not state
-		render(true)
-	end)
-
-	return function()
-		return state
-	end
+  return currentCamera
 end
 
-local getAutoload = makeToggleRow(RivalsRow, 2,  "Autoload", false)
-local getSilentload = makeToggleRow(RivalsRow, 34, "Silentload", false)
+local runService = game:GetService("RunService")
 
-local LoadBtn = btn({
-	Text = "LOAD SCRIPT",
-	BackgroundColor3 = ACCENT,
-	Size = UDim2.new(1, -32, 0, 38),
-	Position = UDim2.fromOffset(16, 400),
-	TextSize = 14,
-	Font = FONT_MAIN,
-	ZIndex = 1,
-	ClipsDescendants = true,
-}, RightPanel)
-corner(CORNER_SM, LoadBtn)
+local userInputService = game:GetService("UserInputService")
+local localPlayer = players.LocalPlayer
+local color = Color3.fromRGB(255, 0, 0)
+local color2 = Color3.fromRGB(0, 0, 0)
+local val = 200
+local q = Enum.KeyCode.Q
 
-local LoadTrack = make("Frame", {
-	BackgroundColor3 = ACCENT_DIM,
-	BorderSizePixel = 0,
-	Position = UDim2.new(0, 0, 1, -3),
-	Size = UDim2.new(1, 0, 0, 3),
-	ZIndex = 2,
-}, LoadBtn)
+local function safeCall(val2)
+  if not val2 then
+    return nil, nil
+  else
+    local success = { pcall(function() return val2:GetBoundingBox() end) }
 
-local LoadFill = make("Frame", {
-	BackgroundColor3 = WHITE,
-	BorderSizePixel = 0,
-	Size = UDim2.new(0, 0, 1, 0),
-	ZIndex = 3,
-}, LoadTrack)
-
-local isLoading,loadToken,dotsThread = false, 0 , nil
-
-function stopDots()
-	if dotsThread then
-		pcall(task.cancel, dotsThread)
-		dotsThread = nil
-	end
+    if success[1] then
+      return success[2], success[3]
+    else
+      return nil, nil
+    end
+  end
 end
 
-function startDots()
-	stopDots()
-	dotsThread = task.spawn(function()
-		local dots = { "", ".", "..", "..." }
-		local i = 0
-		while isLoading do
-			LoadBtn.Text = "LOADING" .. dots[(i % 4) + 1]
-			i += 1
-			task.wait(0.25)
-		end
-	end)
+local e = Enum.KeyCode.E
+local val3 = false
+local val4 = false
+local val5 = true
+local val6 = "Head"
+local val7 = false
+local val8 = {}
+
+local function helper2(val9)
+  return val8[val9] == true
 end
 
-function startLoadingAnim()
-	isLoading = true
+local function helper3(val10)
 
-	LoadBtn.BackgroundColor3 = ACCENT_DIM
-	LoadBtn.TextColor3 = WHITE
-
-	LoadFill.BackgroundColor3 = FILL_LOADING
-	LoadFill.Size = UDim2.new(0, 0, 1, 0)
-
-	TweenService:Create(LoadFill, TweenInfo.new(2.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0.78, 0, 1, 0),
-	}):Play()
-
-	startDots()
+  return val10 and val10.Character or nil
 end
 
-function finishLoadingAnim(ok, text)
-	stopDots()
-	isLoading = false
+local val11 = {}
+local val12 = {}
+local val13 = 0
 
-	local fillColor = ok and FILL_OK or FILL_ERR
-	local btnColor = ok and GREEN_DIM or BTN_ERR
+local function helper4(val14)
+  local object = helper3(val14)
 
-	LoadBtn.Text = text
-	LoadFill.BackgroundColor3 = fillColor
-
-	TweenService:Create(LoadBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		BackgroundColor3 = btnColor,
-	}):Play()
-
-	TweenService:Create(LoadFill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.new(1, 0, 1, 0),
-	}):Play()
+  return object and object:FindFirstChildOfClass("Humanoid") or nil
 end
 
-function resetLoadingAnim()
-	LoadBtn.Text = "LOAD SCRIPT"
-	LoadBtn.BackgroundColor3 = ACCENT
-	LoadBtn.TextColor3 = WHITE
-	TweenService:Create(LoadFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 0, 1, 0),
-	}):Play()
+local function helper5(val15)
+  local object2 = helper3(val15)
+
+  if not object2 then
+    return nil
+  else
+    local findFirstChild = object2:FindFirstChild(val6)
+    local humanoidRootPart = findFirstChild
+
+    if not findFirstChild then
+      local head = object2:FindFirstChild("Head")
+
+      humanoidRootPart = head or object2:FindFirstChild("HumanoidRootPart")
+    end
+
+    return humanoidRootPart
+  end
 end
 
-local selectedGame = nil
-local selectedRow = nil
-local selectedStroke = nil
-local rivalsVersion = "V2"
+local function helper6(val16)
+  local element = helper4(val16)
 
-V1Btn.MouseButton1Click:Connect(function()
-	rivalsVersion = "V1"
-	V1Btn.BackgroundColor3 = ACCENT
-	V2Btn.BackgroundColor3 = BTN_OFF
-end)
-V2Btn.MouseButton1Click:Connect(function()
-	rivalsVersion = "V2"
-	V2Btn.BackgroundColor3 = ACCENT
-	V1Btn.BackgroundColor3 = BTN_OFF
+  return element and element.Health > 0
+end
+
+local function createBoxHandleAdornment()
+  local parent = helper()
+
+  local espHitboxInner = Instance.new("BoxHandleAdornment")
+  espHitboxInner.AlwaysOnTop = true
+  espHitboxInner.ZIndex = 10
+  espHitboxInner.Transparency = 0.35
+  espHitboxInner.Color3 = color
+  espHitboxInner.Name = "ESP_HitboxInner"
+  espHitboxInner.Parent = parent
+
+  local espHitboxOutline = Instance.new("BoxHandleAdornment")
+  espHitboxOutline.AlwaysOnTop = true
+  espHitboxOutline.ZIndex = 9
+  espHitboxOutline.Transparency = 0.75
+  espHitboxOutline.Color3 = color2
+  espHitboxOutline.Name = "ESP_HitboxOutline"
+  espHitboxOutline.Parent = parent
+
+  return { inner = espHitboxInner, outline = espHitboxOutline }
+end
+
+local function helper7(val17)
+  local element2 = val11[val17]
+
+  if not element2 then
+    return
+  else
+    element2.inner.Adornee = nil
+    element2.outline.Adornee = nil
+
+    table.insert(val12, element2)
+    val11[val17] = nil
+    return
+  end
+end
+
+local function helper8(val18)
+  if val11[val18] then
+    return val11[val18]
+  else
+    local val19 = table.remove(val12)
+
+    local val20 = val19 or createBoxHandleAdornment()
+    val11[val18] = val20
+    return val20
+  end
+end
+
+local function helper9(val21)
+  if val21 == localPlayer then
+    return
+  end
+
+  if helper2(val21) then
+    helper7(val21)
+    return
+  end
+
+  local team = val21.Team
+  if team and localPlayer.Team and team == localPlayer.Team then
+    helper7(val21)
+    return
+  end
+
+  local character = val21.Character
+  if not character or not character.Parent or not helper6(val21) then
+    helper7(val21)
+    return
+  end
+
+  local localCharacter = localPlayer.Character
+  local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+  if localRoot then
+    local targetRoot = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+    if targetRoot and (localRoot.Position - targetRoot.Position).Magnitude > 500 then
+      helper7(val21)
+      return
+    end
+  end
+
+  local boxCFrame, boxSize = safeCall(character)
+  if not boxCFrame or not boxSize then
+    helper7(val21)
+    return
+  end
+
+  local adornments = helper8(val21)
+  local inner = adornments.inner
+  local outline = adornments.outline
+
+  inner.Adornee = character
+  inner.Size = boxSize
+  inner.CFrame = boxCFrame:ToObjectSpace(character:GetPivot())
+
+  outline.Adornee = character
+  outline.Size = boxSize * 1.05
+  outline.CFrame = boxCFrame:ToObjectSpace(character:GetPivot())
+end
+
+local aimbotUIV2 = Instance.new("ScreenGui")
+
+aimbotUIV2.Name = "AimbotUI_v2"
+aimbotUIV2.ResetOnSpawn = false
+
+pcall(function()
+
+  aimbotUIV2.Parent = game:GetService("CoreGui")
+  return
 end)
 
-local GAMES = {
-	{
-		name = "Arsenal",
-		load = function(o)
-			getgenv().SCRIPT_KEY = ""
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/edb83cf0f1c81ecc7357cccb96979d81cfb2cec3e0114a980dc46751f3ed86c7/download"))()
-		end
-	},
-	{
-		name = "Bloxstrike",
-		load = function(o)
-			getgenv().SCRIPT_KEY = ""
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/eab2876b1455703856ef5cef90abe022128d85dbca718bbf0b0d67abd9d6f661/download"))()
-		end
-	},
-	{
-		name = "Gunfight Arena",
-		load = function(o)
-			getgenv().SCRIPT_KEY = ""
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/c5335ccfffdf85ccdc01c2ccaeeb884941c55817bd0573e2491934501d033d9b/download"))()
-		end
-	},
-	{
-		name = "Universal",
-		load = function(o)
-			getgenv().SCRIPT_KEY = ""
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/3cf9158bbebe2e92ae85890b25db3bc293e79b1e52d6e266df50917de9b09ab5/download"))()
-		end
-	},
-	{
-		name = "Rivals",
-		rivals = true,
-		load = function(o)
-			getgenv().autoload   = o.autoload
-			getgenv().silentload = o.silentload
-			getgenv().SCRIPT_KEY = ""
-			if o.version == "V2" then
-				loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/2438cfd42af811d55492e854318eeda24a73aa5d0b11a403ec1f7542abd8f2f0/download"))()
-			else
-				loadstring(game:HttpGet("https://api.junkie-development.de/api/v1/luascripts/public/8be52e21a0145a401c446ca7ab2b5df9bd327ea80b0cf1d2fe99e442edd0f9c9/download"))()
-			end
-		end
-	},
-	{
-		name = "Overkill",
-		load = function(o)
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/d603ee0150fbdeb809a036562925966619d3e145a77b4d07b222b0612022ab8f/download"))()
-		end
-	},
-	{
-		name = "Planks",
-		load = function(o)
-			loadstring(game:HttpGet("https://raw.githubusercontent.com/blackowl1231/Z3US/refs/heads/main/Games/Z3US%20Planks.lua"))()
-		end
-	},
-	{
-		name = "One Tap",
-		load = function(o)
-			getgenv().SCRIPT_KEY = ""
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/2548ffbebdf21063cd4083f93a27ac276d44d1cb6503093d9c3290c3dfd954e3/download"))()
-		end
-	},
-	{
-		name = "Sniper Arena",
-		load = function(o)
-			loadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/03733bd5e2a10e56b753ed47fd11442b47c436fe1a45ee01a074b3010ce26bf5/download"))()
-		end
-	},
-}
-
-for i, g in ipairs(GAMES) do
-	local row = make("Frame", {
-		BackgroundColor3 = BG_ROW,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 34),
-		LayoutOrder = i,
-	}, GameScroll)
-	corner(CORNER_SM, row)
-	local rs = stroke(BORDER, 1, row)
-
-	local accentBar = make("Frame", {
-		BackgroundColor3 = ACCENT,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(2, 34),
-		Visible = false,
-	}, row)
-	corner(CORNER_SM, accentBar)
-	label({
-		Text = g.name,
-		TextColor3 = TEXT_MAIN,
-		TextSize = 13,
-		Size = UDim2.new(1, -16, 1, 0),
-		Position = UDim2.fromOffset(10, 0),
-	}, row)
-	local hitbox = btn({
-		BackgroundTransparency = 1,
-		Text = "",
-		Size = UDim2.fromScale(1, 1),
-	}, row)
-	hitbox.MouseEnter:Connect(function()
-		if selectedGame ~= g then
-			row.BackgroundColor3 = Color3.fromRGB(24, 24, 36)
-		end
-	end)
-	hitbox.MouseLeave:Connect(function()
-		if selectedGame ~= g then
-			row.BackgroundColor3 = BG_ROW
-		end
-	end)
-	hitbox.MouseButton1Click:Connect(function()
-		if selectedRow then
-			selectedRow.bg.BackgroundColor3 = BG_ROW
-			selectedRow.stroke.Color = BORDER
-			selectedRow.bar.Visible = false
-		end
-		selectedGame = g
-		selectedRow = {
-			bg = row,
-			stroke = rs,
-			bar = accentBar
-		}
-		row.BackgroundColor3 = BG_ROW_SEL
-		rs.Color = ACCENT
-		accentBar.Visible = true
-		SelectedLabel.Text = g.name
-		SubLabel.Text = g.rivals and "rivals options visible below" or "ready to load"
-		RivalsBlock.Visible = g.rivals == true
-	end)
+if not aimbotUIV2.Parent then
+  aimbotUIV2.Parent = localPlayer:WaitForChild("PlayerGui")
 end
 
-LoadBtn.MouseButton1Click:Connect(function()
-	if isLoading or not selectedGame then
-		return
-	end
+local instance = Instance.new("Frame", aimbotUIV2)
+instance.Size = UDim2.new(0, 300, 0, 170)
+instance.Position = UDim2.new(0.6, 0, 0.32, 0)
+instance.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+instance.BorderSizePixel = 0
+instance.Active = true
+instance.Draggable = true
 
-	loadToken += 1
-	local token = loadToken
-	local target = selectedGame
+Instance.new("UICorner", instance).CornerRadius = UDim.new(0, 8)
 
-	local opts = {
-		autoload = getAutoload(),
-		silentload = getSilentload(),
-		version = rivalsVersion,
-	}
-	startLoadingAnim()
+local instance2 = Instance.new("TextLabel", instance)
+instance2.Size = UDim2.new(1, -20, 0, 24)
+instance2.Position = UDim2.new(0, 10, 0, 8)
+instance2.BackgroundTransparency = 1
+instance2.Text = "Aimbot (improved)"
+instance2.Font = Enum.Font.GothamBold
+instance2.TextSize = 15
+instance2.TextColor3 = Color3.fromRGB(230, 230, 230)
+instance2.TextXAlignment = Enum.TextXAlignment.Left
 
-	task.spawn(function()
-		task.wait(0.2)
+local instance3 = Instance.new("TextButton", instance)
+instance3.Size = UDim2.new(0.48, -10, 0, 36)
+instance3.Position = UDim2.new(0, 10, 0, 36)
+instance3.Text = "Aimbot: OFF (Q)"
+instance3.Font = Enum.Font.GothamBold
+instance3.TextSize = 13
+instance3.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
 
-		local done, ok, err = false, nil, nil
+Instance.new("UICorner", instance3).CornerRadius = UDim.new(0, 6)
 
-		task.spawn(function()
-			ok, err = pcall(target.load, opts)
-			done = true
-		end)
+local instance4 = Instance.new("TextButton", instance)
+instance4.Size = UDim2.new(0.48, -10, 0, 36)
+instance4.Position = UDim2.new(0.52, 0, 0, 36)
+instance4.Text = "Strong Lock: OFF"
+instance4.Font = Enum.Font.Gotham
+instance4.TextSize = 13
+instance4.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
 
-		local deadline = os.clock() + 6
-		while not done and os.clock() < deadline do
-			task.wait(0.1)
-		end
+Instance.new("UICorner", instance4).CornerRadius = UDim.new(0, 6)
 
-		if token ~= loadToken then
-			return
-		end
+local instance5 = Instance.new("TextButton", instance)
+instance5.Size = UDim2.new(0.48, -10, 0, 26)
+instance5.Position = UDim2.new(0, 10, 0, 84)
+instance5.Text = "Wallcheck: ON"
+instance5.Font = Enum.Font.Gotham
+instance5.TextSize = 12
+instance5.BackgroundColor3 = Color3.fromRGB(60, 160, 80)
 
-		if not done then
-			finishLoadingAnim(true, "RUNNING")
-		elseif ok then
-			finishLoadingAnim(true, "LOADED")
-		else
-			finishLoadingAnim(false, "FAILED")
-			warn("[Z3US] load error: " .. tostring(err))
-		end
+Instance.new("UICorner", instance5).CornerRadius = UDim.new(0, 6)
 
-		task.delay(1.2, function()
-			if token == loadToken then
-				resetLoadingAnim()
-			end
-		end)
-	end)
+local instance6 = Instance.new("TextButton", instance)
+instance6.Size = UDim2.new(0.48, -10, 0, 26)
+instance6.Position = UDim2.new(0.52, 0, 0, 84)
+instance6.Text = "Aim: Head"
+instance6.Font = Enum.Font.Gotham
+instance6.TextSize = 12
+instance6.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+
+Instance.new("UICorner", instance6).CornerRadius = UDim.new(0, 6)
+
+local instance7 = Instance.new("TextLabel", instance)
+instance7.Size = UDim2.new(1, -20, 0, 16)
+instance7.Position = UDim2.new(0, 10, 0, 116)
+instance7.BackgroundTransparency = 1
+instance7.Text = "Aimed: None"
+instance7.Font = Enum.Font.Gotham
+instance7.TextSize = 12
+instance7.TextColor3 = Color3.fromRGB(200, 200, 200)
+instance7.TextXAlignment = Enum.TextXAlignment.Left
+
+local instance8 = Instance.new("TextBox", instance)
+instance8.Size = UDim2.new(0.48, -10, 0, 26)
+instance8.Position = UDim2.new(0, 10, 0, 136)
+instance8.PlaceholderText = "FOV Size (" .. val .. ")"
+instance8.Text = tostring(val)
+instance8.Font = Enum.Font.Gotham
+instance8.TextSize = 12
+instance8.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+instance8.TextColor3 = Color3.fromRGB(230, 230, 230)
+
+Instance.new("UICorner", instance8).CornerRadius = UDim.new(0, 6)
+
+instance8.FocusLost:Connect(function(p10)
+  local numVal = tonumber(instance8.Text)
+  local val29 = numVal
+
+  if numVal then
+
+    val29 = numVal > 0 and numVal < 2000
+  end
+
+  if val29 then
+    val = numVal
+
+    instance8.Text = tostring(val)
+    instance8.PlaceholderText = "FOV Size (" .. val .. ")"
+
+    if circle then
+      circle.Radius = val
+    end
+  else
+    instance8.Text = tostring(val)
+  end
+
+  return
 end)
-CloseBtn.MouseButton1Click:Connect(function()
-	L_1_["1"]:Destroy()
+
+local function safeCall2(val30)
+  local element5 = helper()
+
+  if not element5 then
+    return false, "no cam"
+  else
+    local val31 = {
+      pcall(function()
+        element5.CFrame = val30
+        return
+      end), }
+
+    if not val31[1] then
+      val7 = true
+      return false, val31[2]
+    else
+      return true
+    end
+  end
+end
+
+local val32 = false
+local val33
+
+pcall(function()
+  local element6 = Drawing.new("Circle")
+  element6.Thickness = 2
+  element6.NumSides = 64
+  element6.Radius = val
+  element6.Filled = false
+  element6.Color = Color3.fromRGB(200, 200, 255)
+  element6.Visible = false
+
+  val33 = element6
+  val32 = true
+  return
 end)
 
-local UIS = cloneref(game:GetService("UserInputService"))
-local dragging, dragStart, startPos = false, nil, nil
+local function helper10()
+  if not val33 then
+    return
+  else
+    local element7 = helper()
 
-Root.InputBegan:Connect(function(inp)
-	if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-		local relY = inp.Position.Y - Root.AbsolutePosition.Y
-		if relY > 32 then
-			return
-		end
-		dragging = true
-		dragStart = inp.Position
-		startPos = Root.Position
-		inp.Changed:Connect(function()
-			if inp.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
+    if not element7 then
+      return
+    else
+      local viewportSize = element7.ViewportSize
+
+      val33.Position = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+      val33.Radius = val
+
+      return
+    end
+  end
+end
+
+local function helper11(val34, val35)
+
+  if not val34 then
+    return false
+  else
+    local element8 = helper()
+
+    if not element8 then
+      return false
+    else
+      local position = element8.CFrame.Position
+      local val36 = val34.Position - position
+
+      local raycastParams = RaycastParams.new()
+      raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+      local val37 = {}
+
+      if localPlayer.Character then
+        table.insert(val37, localPlayer.Character)
+      end
+
+      if val35 then
+        table.insert(val37, val35)
+      end
+
+      raycastParams.FilterDescendantsInstances = val37
+      raycastParams.IgnoreWater = true
+
+      return (workspace:Raycast(position, val36, raycastParams)) == nil
+    end
+  end
+end
+
+local function iterate()
+  local element9 = helper()
+
+  if not element9 then
+    return nil
+  else
+    local viewportSize2 = element9.ViewportSize
+    local vector = Vector2.new(viewportSize2.X / 2, viewportSize2.Y / 2)
+    local huge = math.huge
+    local val38 = nil
+
+    for index, value in ipairs(players:GetPlayers()) do
+      local val39 = value ~= localPlayer
+      local val40 = val39
+
+      if val39 then
+        local val41 = helper6(value)
+
+        val40 = val41 and not (helper2(value))
+      end
+
+      if val40 then
+        local team3 = value.Team
+        local team4 = team3
+
+        if team3 then
+
+          team4 = localPlayer.Team and value.Team == localPlayer.Team
+        end
+
+        if not team4 then
+          local element10 = helper5(value)
+
+          if element10 then
+            local val42 = { element9:WorldToViewportPoint(element10.Position) }
+            local element11 = val42[1]
+
+            if val42[2] then
+              local magnitude = ((Vector2.new(element11.X, element11.Y)) - vector).Magnitude
+
+              if magnitude < val and magnitude < huge then
+
+                if not val5 or helper11(element10, value.Character) then
+                  huge = magnitude
+                  val38 = value
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+
+    return val38
+  end
+end
+
+local val43
+
+runService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
+  if val33 then
+    helper10()
+    val33.Visible = val3 and val32
+  end
+
+  if not val3 then
+    return
+  end
+
+  if val7 then
+    instance7.Text = "Aimed: Camera writes blocked"
+    return
+  end
+
+  if not val43 or not (val43.Character and val43.Character.Parent) or not helper6(val43) then
+    val43 = iterate()
+  end
+
+  if not val43 or not val43.Character then
+    instance7.Text = "Aimed: None"
+    return
+  end
+
+  local targetPart = helper5(val43)
+  if not targetPart then
+    instance7.Text = "Aimed: None"
+    return
+  end
+
+  if val5 and not helper11(targetPart, val43.Character) then
+    val43 = nil
+    instance7.Text = "Aimed: None"
+    return
+  end
+
+  local currentCamera = helper()
+  if not currentCamera then
+    instance7.Text = "Aimed: None"
+    return
+  end
+
+  local targetCFrame = CFrame.new(currentCamera.CFrame.Position, targetPart.Position)
+
+  if val4 then
+    local success = safeCall2(targetCFrame)
+    if not success then
+      instance7.Text = "Aimed: Camera blocked"
+      val3 = false
+      instance3.Text = "Aimbot: OFF (Q)"
+      instance3.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+      return
+    end
+  else
+    local success = pcall(function()
+      currentCamera.CFrame = currentCamera.CFrame:Lerp(targetCFrame, 0.16)
+    end)
+
+    if not success then
+      val7 = true
+      instance7.Text = "Aimed: Camera writes blocked"
+      val3 = false
+      instance3.Text = "Aimbot: OFF (Q)"
+      instance3.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+      return
+    end
+  end
+
+  instance7.Text = "Aimed: " .. (val43.Name or "Unknown")
 end)
 
-UIS.InputChanged:Connect(function(inp)
-	if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
-		local d = inp.Position - dragStart
-		Root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-	end
+local function helper12(val52)
+  val3 = val52
+
+  instance3.Text = "Aimbot: " .. (val52 and "ON (Q)" or "OFF (Q)")
+
+  local color3 = val52
+  color3 = val52 and Color3.fromRGB(60, 200, 120)
+
+  instance3.BackgroundColor3 = color3 or Color3.fromRGB(180, 60, 60)
+
+  if val52 then
+    val43 = iterate()
+  else
+    val43 = nil
+    instance7.Text = "Aimed: None"
+
+    if val33 then
+      val33.Visible = false
+    end
+  end
+
+  return
+end
+
+instance3.MouseButton1Click:Connect(function()
+  helper12(not val3)
+  return
 end)
+
+instance4.MouseButton1Click:Connect(function()
+  local val53 = not val4
+  val4 = val53
+
+  instance4.Text = "Strong Lock: " .. (val4 and "ON" or "OFF")
+  local val54 = val4
+
+  local color4 = val54
+  color4 = val54 and Color3.fromRGB(60, 200, 120)
+
+  instance4.BackgroundColor3 = color4 or Color3.fromRGB(180, 60, 60)
+
+  if val4 then
+    val43 = iterate()
+  end
+
+  return
+end)
+
+instance5.MouseButton1Click:Connect(function()
+  local val55 = not val5
+  val5 = val55
+
+  instance5.Text = "Wallcheck: " .. (val5 and "ON" or "OFF")
+  local val56 = val5
+
+  local color5 = val56
+  color5 = val56 and Color3.fromRGB(60, 200, 120)
+
+  instance5.BackgroundColor3 = color5 or Color3.fromRGB(160, 160, 160)
+  val43 = iterate()
+  return
+end)
+
+instance6.MouseButton1Click:Connect(function()
+  if val6 == "Head" then
+    val6 = "HumanoidRootPart"
+    instance6.Text = "Aim: HRP"
+  else
+    val6 = "Head"
+    instance6.Text = "Aim: Head"
+  end
+
+  val43 = iterate()
+  return
+end)
+
+userInputService.InputBegan:Connect(function(input, p15)
+  if p15 then
+    return
+  else
+    if input.KeyCode == q then
+      helper12(not val3)
+    else
+      if input.KeyCode == e then
+        instance6:CaptureFocus()
+        instance6:ReleaseFocus()
+        instance6:MouseButton1Click()
+      end
+    end
+
+    return
+  end
+end)
+
+localPlayer.CharacterAdded:Connect(function()
+  val43 = nil
+  val7 = false
+  return
+end)
+
+runService.RenderStepped:Connect(function(delta)
+  val13 = val13 + delta
+
+  if val13 < 0.033333333333333 then
+    return
+  else
+    val13 = 0
+
+    for index2, value2 in ipairs(players:GetPlayers()) do
+      helper9(value2)
+    end
+
+    return
+  end
+end)
+
+local instance9 = Instance.new("TextButton", instance)
+instance9.Size = UDim2.new(0.48, -10, 0, 26)
+instance9.Position = UDim2.new(0.52, 0, 0, 136)
+instance9.Text = "Exclude: 0"
+instance9.Font = Enum.Font.Gotham
+instance9.TextSize = 12
+instance9.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+
+Instance.new("UICorner", instance9).CornerRadius = UDim.new(0, 6)
+
+local instance10 = Instance.new("Frame", instance)
+instance10.Size = UDim2.new(0, 280, 0, 140)
+instance10.Position = UDim2.new(0, 10, 0, 170)
+instance10.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+instance10.Visible = false
+
+Instance.new("UICorner", instance10).CornerRadius = UDim.new(0, 8)
+
+local instance11 = Instance.new("ScrollingFrame", instance10)
+instance11.Size = UDim2.new(1, -12, 1, -12)
+instance11.Position = UDim2.new(0, 6, 0, 6)
+instance11.BackgroundTransparency = 1
+instance11.CanvasSize = UDim2.new(0, 0, 0, 0)
+instance11.ScrollBarThickness = 6
+
+local instance12 = Instance.new("UIListLayout", instance11)
+instance12.Padding = UDim.new(0, 6)
+instance12.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function iterate2()
+  local val57 = 0
+
+  for index3, value3 in ipairs(instance11:GetChildren()) do
+    if (value3:IsA("TextButton")) then
+      val57 = val57 + value3.Size.Y.Offset + 6
+    end
+  end
+
+  instance11.CanvasSize = UDim2.new(0, 0, 0, math.max(0, val57))
+  return
+end
+
+local val58 = {}
+
+local function iterate3()
+  local count = 0
+
+  for key, value4 in pairs(val8) do
+    if value4 then
+      count = count + 1
+    end
+  end
+
+  instance9.Text = "Exclude: " .. (tostring(count))
+  return
+end
+
+local function createTextButton(val59)
+
+  if val59 == localPlayer then
+    return
+  else
+    if val58[val59] then
+      return
+    else
+      local strVal = tostring(val59.Name)
+
+      local text = strVal .. " (" .. (tostring(val59.DisplayName or "")) .. ")"
+
+      textButton = Instance.new("TextButton")
+      textButton.Size = UDim2.new(1, 0, 0, 28)
+
+      local val60 = helper2(val59)
+
+      local color6 = val60
+      color6 = val60 and Color3.fromRGB(180, 60, 60)
+
+      textButton.BackgroundColor3 = color6 or Color3.fromRGB(40, 40, 40)
+      textButton.TextColor3 = Color3.fromRGB(230, 230, 230)
+      textButton.Font = Enum.Font.Gotham
+      textButton.TextSize = 14
+      textButton.Text = text
+      textButton.Parent = instance11
+
+      textButton.MouseButton1Click:Connect(function()
+        if val8[val59] then
+          val8[val59] = nil
+          textButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        else
+          val8[val59] = true
+          textButton.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+
+          if val43 == val59 then
+            val43 = nil
+          end
+        end
+
+        iterate3()
+        return
+      end)
+
+      val58[val59] = textButton
+      iterate2()
+      iterate3()
+      return textButton
+    end
+  end
+end
+
+for index4, value5 in ipairs(players:GetPlayers()) do
+  createTextButton(value5)
+end
+
+players.PlayerAdded:Connect(function(player)
+  createTextButton(player)
+  return
+end)
+
+players.PlayerRemoving:Connect(function(player2)
+  val8[player2] = nil
+  local parent = val58[player2]
+
+  if parent and parent.Parent then
+    parent:Destroy()
+  end
+
+  val58[player2] = nil
+  iterate2()
+  iterate3()
+  helper7(player2)
+
+  if val43 == player2 then
+    val43 = nil
+  end
+
+  return
+end)
+
+instance9.MouseButton1Click:Connect(function()
+  instance10.Visible = not instance10.Visible
+  return
+end)
+
+players.PlayerRemoving:Connect(function(player3)
+  helper7(player3)
+  return
+end)
+
+print("[AimbotUI_v2] Loaded")
