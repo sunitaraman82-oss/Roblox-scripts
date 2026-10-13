@@ -9,34 +9,37 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Configuration
 local CONFIG = {
-    MaxRange = 80,                    -- Maximum target distance in studs
-    Smoothing = 8,                    -- Higher = faster rotation; never instant
-    AimPoint = "Head",                -- "Head" or rig fallback
+    MaxRange = 80,
+    Smoothing = 8, -- Higher = faster turning, lower = smoother
+    AimPoint = "Head",
     ToggleKey = Enum.KeyCode.E,
-    UpdateRate = 60,                  -- Maximum update frequency
 }
 
 -- State
 local enabled = false
 local currentTarget = nil
-local accumulator = 0
+local controlledCharacter = nil
+local controlledHumanoid = nil
+local originalAutoRotate = nil
+local attachment = nil
+local alignOrientation = nil
 
 -- GUI
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "TargetLockGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local gui = Instance.new("ScreenGui")
+gui.Name = "TargetLockGui"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local button = Instance.new("TextButton")
 button.Name = "ToggleButton"
-button.Size = UDim2.fromOffset(180, 44)
-button.Position = UDim2.new(0, 20, 0.5, -22)
+button.Size = UDim2.fromOffset(190, 46)
+button.Position = UDim2.new(0, 20, 0.5, -23)
 button.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
 button.TextColor3 = Color3.new(1, 1, 1)
 button.TextSize = 16
 button.Font = Enum.Font.GothamBold
 button.Text = "Target Lock: OFF"
-button.Parent = screenGui
+button.Parent = gui
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
@@ -45,13 +48,50 @@ corner.Parent = button
 local function updateButton()
     button.Text = enabled and "Target Lock: ON" or "Target Lock: OFF"
     button.BackgroundColor3 = enabled
-        and Color3.fromRGB(35, 145, 85)
+        and Color3.fromRGB(30, 145, 85)
         or Color3.fromRGB(65, 65, 65)
+end
+
+-- Restore the Humanoid's normal rotation behavior.
+local function releaseTarget()
+    currentTarget = nil
+
+    if alignOrientation then
+        alignOrientation.Enabled = false
+    end
+
+    if controlledHumanoid and controlledHumanoid.Parent
+        and originalAutoRotate ~= nil then
+        controlledHumanoid.AutoRotate = originalAutoRotate
+    end
+
+    controlledHumanoid = nil
+    originalAutoRotate = nil
+end
+
+local function cleanupController()
+    releaseTarget()
+
+    if alignOrientation then
+        alignOrientation:Destroy()
+        alignOrientation = nil
+    end
+
+    if attachment then
+        attachment:Destroy()
+        attachment = nil
+    end
+
+    controlledCharacter = nil
 end
 
 local function setEnabled(state)
     enabled = state
-    currentTarget = nil
+
+    if not enabled then
+        releaseTarget()
+    end
+
     updateButton()
 end
 
@@ -69,8 +109,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- Get a valid R6 or R15 character and its aim point.
-local function getCharacterInfo(player)
+-- Validate character, rig type, Humanoid, and aim part.
+local function getTargetInfo(player)
     if player == LocalPlayer then
         return nil
     end
@@ -102,7 +142,7 @@ local function getCharacterInfo(player)
         aimPart = character:FindFirstChild("Head")
     end
 
-    -- Fall back to the appropriate torso if Head is unavailable.
+    -- Fall back to the appropriate torso.
     if not aimPart then
         if rigType == Enum.HumanoidRigType.R6 then
             aimPart = character:FindFirstChild("Torso")
@@ -118,14 +158,13 @@ local function getCharacterInfo(player)
     return character, humanoid, root, aimPart
 end
 
--- Find the nearest valid player character within range.
 local function findNearestTarget(origin)
     local nearestPlayer = nil
     local nearestDistance = CONFIG.MaxRange
 
     for _, player in ipairs(Players:GetPlayers()) do
         local character, humanoid, root, aimPart =
-            getCharacterInfo(player)
+            getTargetInfo(player)
 
         if character and humanoid and root and aimPart then
             local distance = (root.Position - origin).Magnitude
@@ -140,51 +179,37 @@ local function findNearestTarget(origin)
     return nearestPlayer
 end
 
-local function getAimPoint(player)
-    local character, humanoid, root, aimPart =
-        getCharacterInfo(player)
+-- Set up a physical orientation constraint for the current character.
+local function setupController(character, humanoid, root)
+    cleanupController()
 
-    if not character then
-        return nil
-    end
+    controlledCharacter = character
+    controlledHumanoid = humanoid
 
-    local localCharacter = LocalPlayer.Character
-    if not localCharacter then
-        return nil
-    end
+    attachment = Instance.new("Attachment")
+    attachment.Name = "TargetLockAttachment"
+    attachment.Parent = root
 
-    local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
-    if not localRoot then
-        return nil
-    end
-
-    if (root.Position - localRoot.Position).Magnitude > CONFIG.MaxRange then
-        return nil
-    end
-
-    return aimPart.Position
+    alignOrientation = Instance.new("AlignOrientation")
+    alignOrientation.Name = "TargetLockOrientation"
+    alignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    alignOrientation.Attachment0 = attachment
+    alignOrientation.RigidityEnabled = false
+    alignOrientation.Responsiveness = math.max(CONFIG.Smoothing, 0.1)
+    alignOrientation.MaxTorque = 1000000
+    alignOrientation.Enabled = false
+    alignOrientation.Parent = root
 end
 
--- Smoothly rotate the local character toward the target.
-RunService.RenderStepped:Connect(function(dt)
+-- Main update loop.
+RunService.Heartbeat:Connect(function()
     if not enabled then
-        currentTarget = nil
         return
     end
-
-    accumulator += dt
-    local interval = 1 / math.max(CONFIG.UpdateRate, 1)
-
-    if accumulator < interval then
-        return
-    end
-
-    dt = accumulator
-    accumulator = 0
 
     local character = LocalPlayer.Character
     if not character then
-        currentTarget = nil
+        cleanupController()
         return
     end
 
@@ -192,42 +217,74 @@ RunService.RenderStepped:Connect(function(dt)
     local root = character:FindFirstChild("HumanoidRootPart")
 
     if not humanoid or humanoid.Health <= 0 or not root then
-        currentTarget = nil
+        cleanupController()
         return
     end
 
-    -- Acquire or refresh the nearest valid target.
-    local nearest = findNearestTarget(root.Position)
-    currentTarget = nearest
+    -- Rebuild the controller after respawning.
+    if controlledCharacter ~= character
+        or not alignOrientation
+        or not alignOrientation.Parent then
+
+        setupController(character, humanoid, root)
+    end
+
+    -- Select the nearest eligible player every update.
+    currentTarget = findNearestTarget(root.Position)
 
     if not currentTarget then
+        releaseTarget()
         return
     end
 
-    local aimPosition = getAimPoint(currentTarget)
-    if not aimPosition then
-        currentTarget = nil
+    local targetCharacter, targetHumanoid, targetRoot, aimPart =
+        getTargetInfo(currentTarget)
+
+    if not targetCharacter or not targetHumanoid
+        or not targetRoot or not aimPart then
+        releaseTarget()
         return
     end
 
+    if (targetRoot.Position - root.Position).Magnitude > CONFIG.MaxRange then
+        releaseTarget()
+        return
+    end
+
+    -- Remember the original setting before taking control.
+    if controlledHumanoid ~= humanoid then
+        releaseTarget()
+        controlledHumanoid = humanoid
+        originalAutoRotate = humanoid.AutoRotate
+    elseif originalAutoRotate == nil then
+        originalAutoRotate = humanoid.AutoRotate
+    end
+
+    humanoid.AutoRotate = false
+
+    -- Rotate horizontally toward the target without changing position.
     local origin = root.Position
+    local targetPosition = aimPart.Position
+
     local flatTarget = Vector3.new(
-        aimPosition.X,
+        targetPosition.X,
         origin.Y,
-        aimPosition.Z
+        targetPosition.Z
     )
 
-    -- Avoid invalid look-at CFrames when positions overlap.
     if (flatTarget - origin).Magnitude < 0.001 then
         return
     end
 
-    local targetCFrame = CFrame.lookAt(origin, flatTarget)
-
-    -- Exponential smoothing makes rotation independent of frame rate.
-    local alpha = 1 - math.exp(-CONFIG.Smoothing * dt)
-    root.CFrame = root.CFrame:Lerp(targetCFrame, alpha)
+    alignOrientation.Responsiveness = math.max(CONFIG.Smoothing, 0.1)
+    alignOrientation.CFrame = CFrame.lookAt(origin, flatTarget)
+    alignOrientation.Enabled = true
 end)
 
--- Initialize UI state.
+-- Clean up if the local player respawns.
+LocalPlayer.CharacterAdded:Connect(function()
+    cleanupController()
+end)
+
+-- Initial state.
 updateButton()
