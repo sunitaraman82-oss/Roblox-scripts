@@ -2,34 +2,27 @@
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
-print("[TargetLock] Script started")
+print("TEST 1: LocalScript started")
 
-local playerGui = player:WaitForChild("PlayerGui", 10)
-if not playerGui then
-    warn("[TargetLock] PlayerGui was not found")
-    return
-end
+local playerGui = player:WaitForChild("PlayerGui")
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "TargetLockDiagnostic"
-gui.ResetOnSpawn = false
+gui.Name = "SimpleTestGui"
 gui.Parent = playerGui
 
 local button = Instance.new("TextButton")
-button.Name = "TestToggle"
-button.Size = UDim2.fromOffset(220, 50)
+button.Size = UDim2.new(0, 200, 0, 50)
 button.Position = UDim2.new(0, 20, 0, 100)
-button.BackgroundColor3 = Color3.fromRGB(30, 145, 85)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.TextSize = 18
-button.Text = "Target Lock: OFF"
+button.Text = "LOCK: OFF"
 button.Visible = true
 button.Parent = gui
 
-button.Activated:Connect(function()
-    local isOn = button.Text:find("OFF") ~= nil
-    button.Text = isOn and "Target Lock: ON" or "Target Lock: OFF"
-    print("[TargetLock] Toggle:", isOn and "ON" or "OFF")
-end)
+print("TEST 2: Button created")
 
-print("[TargetLock] Diagnostic GUI created")
+button.Activated:Connect(function()
+    if button.Text == "LOCK: OFF" then
+        button.Text = "LOCK: ON"
+    else
+        button.Text = "LOCK: OFF"
+    end
+end)
