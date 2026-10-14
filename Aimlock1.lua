@@ -1,70 +1,297 @@
+-- ==========================================================
+-- RIVALS SILENT AIM + AIMBOT (Based on user-provided source)
+-- For Delta Executor
+-- ==========================================================
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local Players           = game:GetService("Players")
+local Workspace         = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
+
+local LocalPlayer   = Players.LocalPlayer
+local CurrentCamera = Workspace.CurrentCamera
 
 -- // CONFIGURATION \\ --
-local Settings = {
-	Enabled = false,
-	SilentAim = true, -- NEW: Toggle between Silent Aim and Camera Aim
-	TargetLock = true,
-	WallCheck = true,
-	TeamCheck = true,
-	ShowFOV = true,
-	ToggleKey = Enum.KeyCode.E,
-
-	FOV = 250,
-	Smoothness = 0.15, -- Only applies if SilentAim is OFF
-	Prediction = 0.15, 
-	
-	HitPart = "Head", -- "Head", "Torso", "Closest"
-	TargetMode = "Closest",
+local Configuration = {
+	Enabled    = false,
+	SilentAim  = true,
+	FOV        = 150,
+	MaxAngle   = 30,
+	TeamCheck  = true,
+	WallCheck  = true,
+	HitParts   = { "Head", "UpperTorso", "HumanoidRootPart" },
+	Prediction = 0.06,
+	ShowFOV    = true,
+	TargetRate = 1 / 20,
+	CacheRate  = 1,
 }
 
-local Target = nil
-local UIVisible = true
-local OldRaycastParams = RaycastParams.new()
+-- // REMOTE SETUP \\ --
+local Char0, Char1, Char2, Char3 = utf8.char(0), utf8.char(1), utf8.char(2), utf8.char(3)
+local Char4, Char5               = utf8.char(4), utf8.char(5)
+
+local FighterFolder        = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter")
+local UpdateState          = FighterFolder:WaitForChild("UpdateState")
+local UpdateCameraRotation = FighterFolder:WaitForChild("UpdateCameraRotation")
+
+local Utility = nil
+pcall(function()
+	Utility = require(ReplicatedStorage.Modules.Utility)
+end)
+
+-- // FOV CIRCLE \\ --
+local FOVCircle = nil
+pcall(function()
+	FOVCircle           = Drawing.new("Circle")
+	FOVCircle.Color     = Color3.fromRGB(125, 125, 140)
+	FOVCircle.Thickness = 1
+	FOVCircle.NumSides  = 48
+	FOVCircle.Filled    = false
+end)
+
+-- // TARGETING LOGIC \\ --
+local Cached    = {}
+local LastCache = 0
+
+local function IsSameTeam(character)
+	if not Configuration.TeamCheck then return false end
+
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		local mine   = LocalPlayer:GetAttribute("TeamID")
+		local theirs = player:GetAttribute("TeamID")
+		if mine ~= nil and theirs ~= nil and mine == theirs then
+			return true
+		end
+		if LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team then
+			return true
+		end
+	end
+	return false
+end
+
+local function RefreshCache()
+	if tick() - LastCache < Configuration.CacheRate then return end
+	LastCache = tick()
+	table.clear(Cached)
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character then
+			if not IsSameTeam(plr.Character) then
+				table.insert(Cached, plr.Character)
+			end
+		end
+	end
+
+	for _, model in ipairs(CollectionService:GetTagged("Entity")) do
+		if model:IsA("Model") and model ~= LocalPlayer.Character and not IsSameTeam(model) then
+			table.insert(Cached, model)
+		end
+	end
+
+	local range = Workspace:FindFirstChild("ShootingRangeEntities")
+	if range then
+		for _, model in ipairs(range:GetChildren()) do
+			if model:IsA("Model") then
+				table.insert(Cached, model)
+			end
+		end
+	end
+end
+
+local RayParams       = RaycastParams.new()
+RayParams.FilterType  = Enum.RaycastFilterType.Exclude
+RayParams.IgnoreWater = true
+
+local function IsVisible(from, to, char)
+	if not Configuration.WallCheck then return true end
+	
+	-- FIXED: Ignore accessories and tools
+	local ignoreList = { LocalPlayer.Character, CurrentCamera }
+	for _, obj in ipairs(char:GetChildren()) do
+		if obj:IsA("Accessory") or obj:IsA("Tool") or obj:IsA("Hat") then
+			table.insert(ignoreList, obj)
+		end
+	end
+	RayParams.FilterDescendantsInstances = ignoreList
+
+	local hit = Workspace:Raycast(from, to - from, RayParams)
+	if not hit then return true end
+	return hit.Instance:IsDescendantOf(char)
+end
+
+local LastTarget, LastPart, LastScan = nil, nil, 0
+
+local function GetTarget()
+	if not Configuration.Enabled then
+		getgenv().__SA_Lock = false
+		if FOVCircle then FOVCircle.Visible = false end
+		return nil, nil
+	end
+
+	if tick() - LastScan < Configuration.TargetRate then
+		return LastTarget, LastPart
+	end
+
+	LastScan = tick()
+	RefreshCache()
+
+	local mouse   = UserInputService:GetMouseLocation()
+	local cx, cy  = mouse.X, mouse.Y
+	local camPos  = CurrentCamera.CFrame.Position
+	local camLook = CurrentCamera.CFrame.LookVector
+
+	local bestPos, bestPart, bestDist = nil, nil, Configuration.FOV
+
+	for _, model in ipairs(Cached) do
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			for _, name in ipairs(Configuration.HitParts) do
+				local part = model:FindFirstChild(name)
+				if part and part:IsA("BasePart") then
+					local vel = part.AssemblyLinearVelocity
+					local aim = vel.Magnitude > 2 and part.Position + vel * Configuration.Prediction or part.Position
+					local s, onScreen = CurrentCamera:WorldToViewportPoint(aim)
+
+					if onScreen then
+						local dx, dy = s.X - cx, s.Y - cy
+						local d = math.sqrt(dx * dx + dy * dy)
+
+						if d < bestDist then
+							local dir = (aim - camPos).Unit
+							if camLook:Dot(dir) > math.cos(math.rad(Configuration.MaxAngle)) then
+								if IsVisible(camPos, aim, model) then
+									bestDist = d
+									bestPos  = aim
+									bestPart = part
+								end
+							end
+						end
+					end
+					break
+				end
+			end
+		end
+	end
+
+	LastTarget, LastPart = bestPos, bestPart
+
+	if bestPos then
+		getgenv().__SA_Shot = { Pos = bestPos, T = tick() }
+		getgenv().__SA_Lock = true
+	else
+		getgenv().__SA_Lock = false
+	end
+
+	if FOVCircle then
+		FOVCircle.Position = Vector2.new(cx, cy)
+		FOVCircle.Radius   = Configuration.FOV
+		FOVCircle.Visible  = Configuration.ShowFOV and Configuration.Enabled
+		FOVCircle.Color    = getgenv().__SA_Lock and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(125, 125, 140)
+	end
+
+	return bestPos, bestPart
+end
+
+RunService.RenderStepped:Connect(function()
+	GetTarget()
+end)
+
+-- // REMOTE HOOKING \\ --
+local function Encode(cf)
+	local rx, ry, rz = cf:ToOrientation()
+	return {
+		[Char0] = cf.X,
+		[Char1] = cf.Y,
+		[Char2] = cf.Z,
+		[Char3] = rx,
+		[Char4] = ry,
+		[Char5] = rz,
+	}
+end
+
+local function EncodeRot(target)
+	local rx, ry = CFrame.new(CurrentCamera.CFrame.Position, target):ToOrientation()
+	local ok, enc = pcall(function()
+		return Utility:EncodeCameraRotation(Vector2.new(rx, ry))
+	end)
+	if ok and enc then return enc end
+
+	local function b(v)
+		return utf8.char(math.clamp(math.floor(v % 6.2831853 / 6.2831853 * 256 + 0.5), 0, 255))
+	end
+	return b(rx) .. b(ry)
+end
+
+local function HookRemote(remote, fn)
+	if oth and oth.hook and oth.get_root_callback then
+		oth.hook(remote.FireServer, function(self, ...)
+			return fn(oth.get_root_callback(), self, ...)
+		end)
+	else
+		local old
+		old = hookfunction(remote.FireServer, newcclosure(function(self, ...)
+			return fn(old, self, ...)
+		end))
+	end
+end
+
+HookRemote(UpdateState, function(call, self, enumId, a1, a2, ...)
+	if not Configuration.Enabled then
+		return call(self, enumId, a1, a2, ...)
+	end
+
+	if type(a2) == "table" then
+		local pos, part = LastTarget, LastPart
+		if pos and part then
+			local ok, pcf = pcall(function() return part.CFrame end)
+			if ok then
+				local noff   = Encode(pcf:Inverse() * CFrame.new(pos))
+				local cloned = table.clone(a2)
+				for k, e in pairs(cloned) do
+					if type(e) == "table" and e[Char2] ~= nil then
+						local n   = table.clone(e)
+						n[Char2]  = part
+						n[Char3]  = noff
+						cloned[k] = n
+					end
+				end
+				return call(self, enumId, a1, cloned, ...)
+			end
+		end
+	end
+	return call(self, enumId, a1, a2, ...)
+end)
+
+HookRemote(UpdateCameraRotation, function(call, self, rot, ...)
+	if not Configuration.Enabled then
+		return call(self, rot, ...)
+	end
+
+	local s = getgenv().__SA_Shot
+	if s and tick() - s.T < 0.5 and rot ~= nil then
+		rot = EncodeRot(s.Pos)
+	end
+	return call(self, rot, ...)
+end)
 
 -- // UI CREATION \\ --
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "AdvancedAimAssist"
+Gui.Name = "RivalsSilentAim"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- FOV Circle
-local FOVCircle = Instance.new("Frame")
-FOVCircle.Name = "FOV"
-FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
-FOVCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-FOVCircle.BackgroundTransparency = 1
-FOVCircle.Parent = Gui
-
-local CircleCorner = Instance.new("UICorner")
-CircleCorner.CornerRadius = UDim.new(1, 0)
-CircleCorner.Parent = FOVCircle
-
-local CircleStroke = Instance.new("UIStroke")
-CircleStroke.Thickness = 2
-CircleStroke.Color = Color3.fromRGB(255, 255, 255)
-CircleStroke.Parent = FOVCircle
-
--- Main Panel
 local Panel = Instance.new("Frame")
-Panel.Name = "Panel"
-Panel.Size = UDim2.fromOffset(300, 470) -- Made taller for new button
-Panel.Position = UDim2.new(0, 25, 0.5, -235)
+Panel.Size = UDim2.fromOffset(320, 380)
+Panel.Position = UDim2.new(0, 25, 0.5, -190)
 Panel.BackgroundColor3 = Color3.fromRGB(22, 20, 27)
 Panel.BackgroundTransparency = 0.08
 Panel.BorderSizePixel = 0
 Panel.Parent = Gui
-
-local PanelCorner = Instance.new("UICorner")
-PanelCorner.CornerRadius = UDim.new(0, 14)
-PanelCorner.Parent = Panel
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 14)
 
 local PanelStroke = Instance.new("UIStroke")
 PanelStroke.Color = Color3.fromRGB(80, 75, 90)
@@ -72,16 +299,17 @@ PanelStroke.Transparency = 0.25
 PanelStroke.Parent = Panel
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -55, 0, 45)
+Title.Size = UDim2.new(1, -85, 0, 45)
 Title.Position = UDim2.fromOffset(15, 5)
 Title.BackgroundTransparency = 1
-Title.Text = "Silent Aim Assist"
+Title.Text = "Rivals Silent Aim"
 Title.TextColor3 = Color3.new(1, 1, 1)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 19
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Panel
 
+-- Close Button
 local Close = Instance.new("TextButton")
 Close.Size = UDim2.fromOffset(34, 34)
 Close.Position = UDim2.new(1, -44, 0, 10)
@@ -93,6 +321,19 @@ Close.Font = Enum.Font.GothamBold
 Close.Parent = Panel
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
+-- Minimize Button
+local Minimize = Instance.new("TextButton")
+Minimize.Size = UDim2.fromOffset(34, 34)
+Minimize.Position = UDim2.new(1, -82, 0, 10)
+Minimize.BackgroundColor3 = Color3.fromRGB(45, 42, 52)
+Minimize.Text = "-"
+Minimize.TextColor3 = Color3.new(1, 1, 1)
+Minimize.TextSize = 22
+Minimize.Font = Enum.Font.GothamBold
+Minimize.Parent = Panel
+Instance.new("UICorner", Minimize).CornerRadius = UDim.new(0, 8)
+
+-- Floating Icon
 local Open = Instance.new("TextButton")
 Open.Size = UDim2.fromOffset(48, 48)
 Open.Position = UDim2.fromOffset(20, 20)
@@ -106,18 +347,13 @@ Open.Visible = false
 Open.Parent = Gui
 Instance.new("UICorner", Open).CornerRadius = UDim.new(0, 12)
 
-Close.Activated:Connect(function()
-	Panel.Visible = false
-	Open.Visible = true
-end)
+-- UI Logic
+Close.Activated:Connect(function() Panel.Visible = false; Open.Visible = true end)
+Minimize.Activated:Connect(function() Panel.Visible = false; Open.Visible = true end)
+Open.Activated:Connect(function() Panel.Visible = true; Open.Visible = false end)
 
-Open.Activated:Connect(function()
-	Panel.Visible = true
-	Open.Visible = false
-end)
-
--- UI Helper Functions
-local Y = 58
+-- UI Helpers
+local Y = 55
 local function Button(text)
 	local b = Instance.new("TextButton")
 	b.Size = UDim2.new(1, -30, 0, 36)
@@ -150,16 +386,11 @@ local function Label(text)
 end
 
 -- UI Elements
-local AimButton = Button("Aim Assist : OFF")
-local SilentButton = Button("Silent Aim : ON") -- NEW
-local LockButton = Button("Target Lock : ON")
-local WallButton = Button("Wall Check : ON")
+local AimButton = Button("Enabled : OFF")
 local TeamButton = Button("Team Check : ON")
-local HitButton = Button("Hit Part : Head")
-local ModeButton = Button("Target Mode : Closest")
+local WallButton = Button("Wall Check : ON")
+local FOVLabel = Label("FOV : 150")
 
--- Sliders
-local FOVLabel = Label("FOV : 250")
 local FOVBar = Instance.new("Frame")
 FOVBar.Size = UDim2.new(1, -30, 0, 8)
 FOVBar.Position = UDim2.fromOffset(15, Y)
@@ -169,349 +400,32 @@ FOVBar.Parent = Panel
 Instance.new("UICorner", FOVBar).CornerRadius = UDim.new(1, 0)
 
 local FOVFill = Instance.new("Frame")
-FOVFill.Size = UDim2.new(Settings.FOV / 500, 0, 1, 0)
+FOVFill.Size = UDim2.new(Configuration.FOV / 500, 0, 1, 0)
 FOVFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
 FOVFill.BorderSizePixel = 0
 FOVFill.Parent = FOVBar
 Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
-Y += 25
-
-local SmoothLabel = Label("Smoothness : 0.15")
-local SmoothBar = Instance.new("Frame")
-SmoothBar.Size = UDim2.new(1, -30, 0, 8)
-SmoothBar.Position = UDim2.fromOffset(15, Y)
-SmoothBar.BackgroundColor3 = Color3.fromRGB(55, 52, 63)
-SmoothBar.BorderSizePixel = 0
-SmoothBar.Parent = Panel
-Instance.new("UICorner", SmoothBar).CornerRadius = UDim.new(1, 0)
-
-local SmoothFill = Instance.new("Frame")
-SmoothFill.Size = UDim2.new(Settings.Smoothness, 0, 1, 0)
-SmoothFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-SmoothFill.BorderSizePixel = 0
-SmoothFill.Parent = SmoothBar
-Instance.new("UICorner", SmoothFill).CornerRadius = UDim.new(1, 0)
 
 -- Slider Logic
-local function Slider(bar, fill, min, max, callback)
-	local dragging = false
-	local function update(x)
-		local percent = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-		local value = min + ((max - min) * percent)
-		fill.Size = UDim2.new(percent, 0, 1, 0)
-		callback(value)
-	end
-	bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			update(input.Position.X)
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			update(input.Position.X)
-		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-end
-
-Slider(FOVBar, FOVFill, 50, 500, function(value)
-	Settings.FOV = math.floor(value)
-	FOVLabel.Text = "FOV : " .. Settings.FOV
-	FOVCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-end)
-
-Slider(SmoothBar, SmoothFill, 0.01, 1.0, function(value)
-	Settings.Smoothness = value
-	SmoothLabel.Text = string.format("Smoothness : %.2f", value)
-end)
-
--- Button Logic
-local function UpdateAimButton()
-	AimButton.Text = "Aim Assist : " .. (Settings.Enabled and "ON" or "OFF")
-	AimButton.BackgroundColor3 = Settings.Enabled and Color3.fromRGB(45, 135, 75) or Color3.fromRGB(40, 37, 47)
-end
-
-AimButton.Activated:Connect(function()
-	Settings.Enabled = not Settings.Enabled
-	if not Settings.Enabled then Target = nil end
-	UpdateAimButton()
-end)
-
-SilentButton.Activated:Connect(function()
-	Settings.SilentAim = not Settings.SilentAim
-	SilentButton.Text = "Silent Aim : " .. (Settings.SilentAim and "ON" or "OFF")
-	SilentButton.BackgroundColor3 = Settings.SilentAim and Color3.fromRGB(45, 135, 75) or Color3.fromRGB(40, 37, 47)
-end)
-
-LockButton.Activated:Connect(function()
-	Settings.TargetLock = not Settings.TargetLock
-	LockButton.Text = "Target Lock : " .. (Settings.TargetLock and "ON" or "OFF")
-end)
-
-WallButton.Activated:Connect(function()
-	Settings.WallCheck = not Settings.WallCheck
-	WallButton.Text = "Wall Check : " .. (Settings.WallCheck and "ON" or "OFF")
-end)
-
-TeamButton.Activated:Connect(function()
-	Settings.TeamCheck = not Settings.TeamCheck
-	TeamButton.Text = "Team Check : " .. (Settings.TeamCheck and "ON" or "OFF")
-end)
-
-local HitParts = {"Head", "Torso", "Closest"}
-local HitIndex = 1
-HitButton.Activated:Connect(function()
-	HitIndex += 1
-	if HitIndex > #HitParts then HitIndex = 1 end
-	Settings.HitPart = HitParts[HitIndex]
-	HitButton.Text = "Hit Part : " .. Settings.HitPart
-end)
-
-local Modes = {"Closest", "Lowest Health"}
-local ModeIndex = 1
-ModeButton.Activated:Connect(function()
-	ModeIndex += 1
-	if ModeIndex > #Modes then ModeIndex = 1 end
-	Settings.TargetMode = Modes[ModeIndex]
-	ModeButton.Text = "Target Mode : " .. Settings.TargetMode
-end)
-
--- // KEYBIND TOGGLE \\ --
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Settings.ToggleKey then
-		Settings.Enabled = not Settings.Enabled
-		if not Settings.Enabled then Target = nil end
-		UpdateAimButton()
-	end
-end)
-
--- // CORE LOGIC \\ --
-
--- FIXED: Wall check now ignores the local player's character, accessories, and camera
-local function Visible(part, character)
-	if not Settings.WallCheck then return true end
-	
-	local origin = Camera.CFrame.Position
-	local direction = part.Position - origin
-	
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	
-	-- Create a table of things to ignore
-	local ignoreList = {Camera}
-	if LocalPlayer.Character then
-		table.insert(ignoreList, LocalPlayer.Character)
-	end
-	
-	params.FilterDescendantsInstances = ignoreList
-	
-	local result = workspace:Raycast(origin, direction, params)
-	
-	-- If nothing is hit, the path is clear
-	if not result then return true end
-	
-	-- If the hit object is part of the target's character, it's visible
-	return result.Instance:IsDescendantOf(character)
-end
-
-local function GetPart(character)
-	if Settings.HitPart == "Head" then
-		return character:FindFirstChild("Head")
-	elseif Settings.HitPart == "Torso" then
-		return character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character:FindFirstChild("LowerTorso")
-	elseif Settings.HitPart == "Closest" then
-		local closestPart = nil
-		local shortestDist = math.huge
-		for _, part in ipairs(character:GetChildren()) do
-			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-				local dist = (part.Position - Camera.CFrame.Position).Magnitude
-				if dist < shortestDist then
-					shortestDist = dist
-					closestPart = part
-				end
-			end
-		end
-		return closestPart or character:FindFirstChild("HumanoidRootPart")
-	end
-	return character:FindFirstChild("Head")
-end
-
-local function ValidPlayer(plr)
-	if plr == LocalPlayer then return false end
-	if Settings.TeamCheck and LocalPlayer.Team ~= nil and plr.Team == LocalPlayer.Team then return false end
-	local character = plr.Character
-	if not character then return false end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return false end
-	return GetPart(character) ~= nil
-end
-
-local function FindTarget()
-	local best = nil
-	local bestScore = math.huge
-	local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if ValidPlayer(plr) then
-			local character = plr.Character
-			local part = GetPart(character)
-			if part then
-				local point, onscreen = Camera:WorldToViewportPoint(part.Position)
-				if onscreen and point.Z > 0 then
-					local distance = (Vector2.new(point.X, point.Y) - center).Magnitude
-					if distance <= Settings.FOV and Visible(part, character) then
-						local score = distance
-						if Settings.TargetMode == "Lowest Health" then
-							local hum = character:FindFirstChildOfClass("Humanoid")
-							score = hum and hum.Health or 1000
-						end
-						if score < bestScore then
-							bestScore = score
-							best = plr
-						end
-					end
-				end
-			end
-		end
-	end
-	return best
-end
-
--- // ADVANCED PREDICTION \\ --
-local function GetPredictedPosition(part)
-	local ping = 0
-	if LocalPlayer:GetNetworkPing() then
-		ping = LocalPlayer:GetNetworkPing() * 2
-	end
-	
-	local velocity = part.AssemblyLinearVelocity
-	return part.Position + (velocity * (Settings.Prediction + ping))
-end
-
--- // SILENT AIM HOOK \\ --
--- This hooks the camera CFrame so when the game asks "where is the camera looking?", 
--- it returns the target's position instead of your actual camera position.
-local oldCameraCFrame
-local silentAimActive = false
-
-local function EnableSilentAim()
-	if silentAimActive then return end
-	silentAimActive = true
-	
-	-- Hook the camera CFrame
-	local mt = getrawmetatable(game)
-	local oldIndex = mt.__index
-	local oldNamecall = mt.__namecall
-	
-	mt.__index = newcclosure(function(self, key)
-		if self == Camera and key == "CFrame" and Settings.Enabled and Settings.SilentAim and Target then
-			local targetChar = Target.Character
-			if targetChar then
-				local part = GetPart(targetChar)
-				if part then
-					-- Return a CFrame looking at the target
-					return CFrame.lookAt(Camera.CFrame.Position, GetPredictedPosition(part))
-				end
-			end
-		end
-		return oldIndex(self, key)
-	end)
-	
-	mt.__namecall = newcclosure(function(self, ...)
-		local method = getnamecallmethod()
-		if self == Camera and method == "WorldToScreenPoint" and Settings.Enabled and Settings.SilentAim and Target then
-			-- Optional: Hook WorldToScreenPoint if needed
-		end
-		return oldNamecall(self, ...)
-	end)
-end
-
-local function DisableSilentAim()
-	if not silentAimActive then return end
-	silentAimActive = false
-	local mt = getrawmetatable(game)
-	mt.__index = nil
-	mt.__namecall = nil
-end
-
--- // RENDER LOOP \\ --
-RunService:BindToRenderStep("AimAssistUpdate", Enum.RenderPriority.Camera.Value + 1, function()
-	FOVCircle.Visible = Settings.ShowFOV
-	if Settings.ShowFOV then
-		FOVCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-	end
-
-	if not Settings.Enabled then
-		Target = nil
-		CircleStroke.Color = Color3.fromRGB(255, 255, 255)
-		if silentAimActive then DisableSilentAim() end
-		return
-	end
-
-	if Settings.SilentAim and not silentAimActive then
-		EnableSilentAim()
-	elseif not Settings.SilentAim and silentAimActive then
-		DisableSilentAim()
-	end
-
-	if not Settings.TargetLock or not Target or not ValidPlayer(Target) then
-		Target = FindTarget()
-	end
-
-	if not Target then
-		CircleStroke.Color = Color3.fromRGB(255, 255, 255)
-		return
-	end
-
-	local character = Target.Character
-	local part = GetPart(character)
-
-	if not part then
-		Target = nil
-		return
-	end
-
-	if not Visible(part, character) then
-		Target = nil
-		return
-	end
-
-	CircleStroke.Color = Color3.fromRGB(50, 255, 100)
-	
-	-- Only move camera if Silent Aim is OFF
-	if not Settings.SilentAim then
-		local predicted = GetPredictedPosition(part)
-		local desired = CFrame.lookAt(Camera.CFrame.Position, predicted)
-		local alpha = 1 - (Settings.Smoothness * 0.9) 
-		if alpha < 0.01 then alpha = 0.01 end
-		Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
-	end
-end)
-
--- // DRAGGING LOGIC \\ --
 local dragging = false
-local dragStart
-local panelStart
+local function updateSlider(x)
+	local percent = math.clamp((x - FOVBar.AbsolutePosition.X) / FOVBar.AbsoluteSize.X, 0, 1)
+	local value = math.floor(50 + (450 * percent))
+	Configuration.FOV = value
+	FOVLabel.Text = "FOV : " .. value
+	FOVFill.Size = UDim2.new(percent, 0, 1, 0)
+end
 
-Title.InputBegan:Connect(function(input)
+FOVBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
-		dragStart = input.Position
-		panelStart = Panel.Position
+		updateSlider(input.Position.X)
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if not dragging then return end
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		local delta = input.Position - dragStart
-		Panel.Position = UDim2.new(panelStart.X.Scale, panelStart.X.Offset + delta.X, panelStart.Y.Scale, panelStart.Y.Offset + delta.Y)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		updateSlider(input.Position.X)
 	end
 end)
 
@@ -520,3 +434,66 @@ UserInputService.InputEnded:Connect(function(input)
 		dragging = false
 	end
 end)
+
+-- Button Logic
+local function UpdateAimButton()
+	AimButton.Text = "Enabled : " .. (Configuration.Enabled and "ON" or "OFF")
+	AimButton.BackgroundColor3 = Configuration.Enabled and Color3.fromRGB(45, 135, 75) or Color3.fromRGB(40, 37, 47)
+end
+
+AimButton.Activated:Connect(function()
+	Configuration.Enabled = not Configuration.Enabled
+	UpdateAimButton()
+end)
+
+TeamButton.Activated:Connect(function()
+	Configuration.TeamCheck = not Configuration.TeamCheck
+	TeamButton.Text = "Team Check : " .. (Configuration.TeamCheck and "ON" or "OFF")
+end)
+
+WallButton.Activated:Connect(function()
+	Configuration.WallCheck = not Configuration.WallCheck
+	WallButton.Text = "Wall Check : " .. (Configuration.WallCheck and "ON" or "OFF")
+end)
+
+-- Keybind Toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.RightShift then
+		Panel.Visible = not Panel.Visible
+		Open.Visible = not Panel.Visible
+	end
+end)
+
+-- Dragging Logic
+local dragStart, startPos
+local function setupDrag(guiObj)
+	guiObj.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = guiObj.Position
+		end
+	end)
+end
+
+setupDrag(Title)
+setupDrag(Open)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - dragStart
+		local target = (Title.Parent == Panel) and Panel or Open
+		target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+-- Initial State
+UpdateAimButton()
