@@ -1,5 +1,3 @@
---// Studio Mobile Aim Assist
---// Place this LocalScript in StarterPlayer > StarterPlayerScripts
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -23,10 +21,6 @@ local Settings = {
 
 local Target = nil
 local UIVisible = true
-
---------------------------------------------------
--- CHARACTER / HIT PART
---------------------------------------------------
 
 local function GetHitPart(character)
 	if not character then
@@ -62,10 +56,6 @@ local function GetHitPart(character)
 		or character:FindFirstChild("Head")
 end
 
---------------------------------------------------
--- TARGET VALIDATION
---------------------------------------------------
-
 local function IsValidTarget(player)
 	if not player or player == LocalPlayer then
 		return false
@@ -89,10 +79,6 @@ local function IsValidTarget(player)
 
 	return GetHitPart(character) ~= nil
 end
-
---------------------------------------------------
--- WALL CHECK
---------------------------------------------------
 
 local function IsVisible(character, part)
 	if not Settings.WallCheck then
@@ -122,10 +108,6 @@ local function IsVisible(character, part)
 
 	return result.Instance:IsDescendantOf(character)
 end
-
---------------------------------------------------
--- TARGET FINDING
---------------------------------------------------
 
 local function FindTarget()
 	local bestTarget = nil
@@ -169,10 +151,6 @@ local function FindTarget()
 	return bestTarget
 end
 
---------------------------------------------------
--- TARGET LOCK VALIDATION
---------------------------------------------------
-
 local function TargetStillValid(player)
 	if not IsValidTarget(player) then
 		return false
@@ -207,10 +185,6 @@ local function TargetStillValid(player)
 
 	return IsVisible(character, part)
 end
-
---------------------------------------------------
--- AIM
---------------------------------------------------
 
 local function AimAt(player, deltaTime)
 	if not player or not player.Character then
@@ -247,19 +221,11 @@ local function AimAt(player, deltaTime)
 		Camera.CFrame:Lerp(targetCFrame, frameStrength)
 end
 
---------------------------------------------------
--- UI
---------------------------------------------------
-
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "StudioAimAssistUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
---------------------------------------------------
--- FOV CIRCLE
---------------------------------------------------
 
 local FOVCircle = Instance.new("Frame")
 FOVCircle.Name = "FOVCircle"
@@ -277,10 +243,6 @@ CircleStroke.Thickness = 2
 CircleStroke.Transparency = 0.15
 CircleStroke.Parent = FOVCircle
 
---------------------------------------------------
--- OPEN BUTTON
---------------------------------------------------
-
 local OpenButton = Instance.new("TextButton")
 OpenButton.Name = "OpenButton"
 OpenButton.Size = UDim2.fromOffset(55, 55)
@@ -294,10 +256,6 @@ local OpenCorner = Instance.new("UICorner")
 OpenCorner.CornerRadius = UDim.new(0, 12)
 OpenCorner.Parent = OpenButton
 
---------------------------------------------------
--- PANEL
---------------------------------------------------
-
 local Panel = Instance.new("Frame")
 Panel.Name = "Panel"
 Panel.Size = UDim2.fromOffset(250, 430)
@@ -309,10 +267,6 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = Panel
 
---------------------------------------------------
--- TITLE
---------------------------------------------------
-
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -50, 0, 45)
 Title.Position = UDim2.fromOffset(12, 5)
@@ -322,10 +276,6 @@ Title.TextSize = 20
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Panel
 
---------------------------------------------------
--- CLOSE
---------------------------------------------------
-
 local CloseButton = Instance.new("TextButton")
 CloseButton.Size = UDim2.fromOffset(40, 40)
 CloseButton.Position = UDim2.new(1, -45, 0, 5)
@@ -333,10 +283,6 @@ CloseButton.Text = "×"
 CloseButton.TextSize = 25
 CloseButton.BackgroundTransparency = 1
 CloseButton.Parent = Panel
-
---------------------------------------------------
--- BUTTON CREATOR
---------------------------------------------------
 
 local ButtonY = 55
 
@@ -359,10 +305,6 @@ local function CreateButton(text)
 	return button
 end
 
---------------------------------------------------
--- CONTROLS
---------------------------------------------------
-
 local AimButton =
 	CreateButton("Aim Assist : OFF")
 
@@ -380,10 +322,6 @@ local HitPartButton =
 
 local FOVButton =
 	CreateButton("FOV : 50")
-
---------------------------------------------------
--- BUTTON EVENTS
---------------------------------------------------
 
 AimButton.Activated:Connect(function()
 	Settings.Enabled = not Settings.Enabled
@@ -458,10 +396,6 @@ FOVButton.Activated:Connect(function()
 	Target = nil
 end)
 
---------------------------------------------------
--- OPEN / CLOSE
---------------------------------------------------
-
 CloseButton.Activated:Connect(function()
 	UIVisible = false
 	Panel.Visible = false
@@ -471,10 +405,6 @@ OpenButton.Activated:Connect(function()
 	UIVisible = true
 	Panel.Visible = true
 end)
-
---------------------------------------------------
--- MAIN LOOP
---------------------------------------------------
 
 RunService:BindToRenderStep(
 	"StudioMobileAimAssist",
