@@ -1,7 +1,10 @@
 -- ==========================================================
--- RIVALS SILENT AIM + AIMBOT (Based on user-provided source)
--- For Delta Executor
+-- RIVALS SILENT AIM (Mobile Fixed + Anti-Discard)
 -- ==========================================================
+
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until Players and Players.LocalPlayer
+repeat task.wait() until Players.LocalPlayer:FindFirstChild("PlayerScripts")
 
 local Players           = game:GetService("Players")
 local Workspace         = game:GetService("Workspace")
@@ -12,6 +15,10 @@ local CollectionService = game:GetService("CollectionService")
 
 local LocalPlayer   = Players.LocalPlayer
 local CurrentCamera = Workspace.CurrentCamera
+
+-- // MOBILE DETECTION \\ --
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local ScreenGui = nil
 
 -- // CONFIGURATION \\ --
 local Configuration = {
@@ -32,9 +39,17 @@ local Configuration = {
 local Char0, Char1, Char2, Char3 = utf8.char(0), utf8.char(1), utf8.char(2), utf8.char(3)
 local Char4, Char5               = utf8.char(4), utf8.char(5)
 
-local FighterFolder        = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter")
-local UpdateState          = FighterFolder:WaitForChild("UpdateState")
-local UpdateCameraRotation = FighterFolder:WaitForChild("UpdateCameraRotation")
+local FighterFolder = ReplicatedStorage:WaitForChild("Remotes", 10)
+if not FighterFolder then warn("Remotes not found") return end
+FighterFolder = FighterFolder:WaitForChild("Replication", 10)
+if not FighterFolder then return end
+FighterFolder = FighterFolder:WaitForChild("Fighter", 10)
+if not FighterFolder then return end
+
+local UpdateState          = FighterFolder:WaitForChild("UpdateState", 10)
+local UpdateCameraRotation = FighterFolder:WaitForChild("UpdateCameraRotation", 10)
+
+if not UpdateState or not UpdateCameraRotation then return end
 
 local Utility = nil
 pcall(function()
@@ -57,17 +72,12 @@ local LastCache = 0
 
 local function IsSameTeam(character)
 	if not Configuration.TeamCheck then return false end
-
 	local player = Players:GetPlayerFromCharacter(character)
 	if player then
 		local mine   = LocalPlayer:GetAttribute("TeamID")
 		local theirs = player:GetAttribute("TeamID")
-		if mine ~= nil and theirs ~= nil and mine == theirs then
-			return true
-		end
-		if LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team then
-			return true
-		end
+		if mine ~= nil and theirs ~= nil and mine == theirs then return true end
+		if LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team then return true end
 	end
 	return false
 end
@@ -76,7 +86,6 @@ local function RefreshCache()
 	if tick() - LastCache < Configuration.CacheRate then return end
 	LastCache = tick()
 	table.clear(Cached)
-
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer and plr.Character then
 			if not IsSameTeam(plr.Character) then
@@ -84,19 +93,15 @@ local function RefreshCache()
 			end
 		end
 	end
-
 	for _, model in ipairs(CollectionService:GetTagged("Entity")) do
 		if model:IsA("Model") and model ~= LocalPlayer.Character and not IsSameTeam(model) then
 			table.insert(Cached, model)
 		end
 	end
-
 	local range = Workspace:FindFirstChild("ShootingRangeEntities")
 	if range then
 		for _, model in ipairs(range:GetChildren()) do
-			if model:IsA("Model") then
-				table.insert(Cached, model)
-			end
+			if model:IsA("Model") then table.insert(Cached, model) end
 		end
 	end
 end
@@ -107,8 +112,6 @@ RayParams.IgnoreWater = true
 
 local function IsVisible(from, to, char)
 	if not Configuration.WallCheck then return true end
-	
-	-- FIXED: Ignore accessories and tools
 	local ignoreList = { LocalPlayer.Character, CurrentCamera }
 	for _, obj in ipairs(char:GetChildren()) do
 		if obj:IsA("Accessory") or obj:IsA("Tool") or obj:IsA("Hat") then
@@ -116,7 +119,6 @@ local function IsVisible(from, to, char)
 		end
 	end
 	RayParams.FilterDescendantsInstances = ignoreList
-
 	local hit = Workspace:Raycast(from, to - from, RayParams)
 	if not hit then return true end
 	return hit.Instance:IsDescendantOf(char)
@@ -124,6 +126,7 @@ end
 
 local LastTarget, LastPart, LastScan = nil, nil, 0
 
+-- // MOBILE COMPATIBLE TARGETING \\ --
 local function GetTarget()
 	if not Configuration.Enabled then
 		getgenv().__SA_Lock = false
@@ -134,12 +137,23 @@ local function GetTarget()
 	if tick() - LastScan < Configuration.TargetRate then
 		return LastTarget, LastPart
 	end
-
 	LastScan = tick()
 	RefreshCache()
 
-	local mouse   = UserInputService:GetMouseLocation()
-	local cx, cy  = mouse.X, mouse.Y
+	-- MOBILE FIX: Get touch position instead of mouse position
+	local cx, cy
+	if isMobile then
+		local touches = UserInputService:GetFocusedTextBox() -- Check if typing
+		if touches then return LastTarget, LastPart end
+		
+		-- Get the center of the screen for mobile aiming reference
+		cx = CurrentCamera.ViewportSize.X / 2
+		cy = CurrentCamera.ViewportSize.Y / 2
+	else
+		local mouse = UserInputService:GetMouseLocation()
+		cx, cy = mouse.X, mouse.Y
+	end
+
 	local camPos  = CurrentCamera.CFrame.Position
 	local camLook = CurrentCamera.CFrame.LookVector
 
@@ -195,33 +209,19 @@ local function GetTarget()
 	return bestPos, bestPart
 end
 
-RunService.RenderStepped:Connect(function()
-	GetTarget()
-end)
+RunService.RenderStepped:Connect(function() GetTarget() end)
 
--- // REMOTE HOOKING \\ --
+-- // REMOTE HOOKING (Fixed for Discard Error) \\ --
 local function Encode(cf)
 	local rx, ry, rz = cf:ToOrientation()
-	return {
-		[Char0] = cf.X,
-		[Char1] = cf.Y,
-		[Char2] = cf.Z,
-		[Char3] = rx,
-		[Char4] = ry,
-		[Char5] = rz,
-	}
+	return { [Char0] = cf.X, [Char1] = cf.Y, [Char2] = cf.Z, [Char3] = rx, [Char4] = ry, [Char5] = rz }
 end
 
 local function EncodeRot(target)
 	local rx, ry = CFrame.new(CurrentCamera.CFrame.Position, target):ToOrientation()
-	local ok, enc = pcall(function()
-		return Utility:EncodeCameraRotation(Vector2.new(rx, ry))
-	end)
+	local ok, enc = pcall(function() return Utility:EncodeCameraRotation(Vector2.new(rx, ry)) end)
 	if ok and enc then return enc end
-
-	local function b(v)
-		return utf8.char(math.clamp(math.floor(v % 6.2831853 / 6.2831853 * 256 + 0.5), 0, 255))
-	end
+	local function b(v) return utf8.char(math.clamp(math.floor(v % 6.2831853 / 6.2831853 * 256 + 0.5), 0, 255)) end
 	return b(rx) .. b(ry)
 end
 
@@ -239,10 +239,7 @@ local function HookRemote(remote, fn)
 end
 
 HookRemote(UpdateState, function(call, self, enumId, a1, a2, ...)
-	if not Configuration.Enabled then
-		return call(self, enumId, a1, a2, ...)
-	end
-
+	if not Configuration.Enabled then return call(self, enumId, a1, a2, ...) end
 	if type(a2) == "table" then
 		local pos, part = LastTarget, LastPart
 		if pos and part then
@@ -266,10 +263,7 @@ HookRemote(UpdateState, function(call, self, enumId, a1, a2, ...)
 end)
 
 HookRemote(UpdateCameraRotation, function(call, self, rot, ...)
-	if not Configuration.Enabled then
-		return call(self, rot, ...)
-	end
-
+	if not Configuration.Enabled then return call(self, rot, ...) end
 	local s = getgenv().__SA_Shot
 	if s and tick() - s.T < 0.5 and rot ~= nil then
 		rot = EncodeRot(s.Pos)
@@ -277,16 +271,17 @@ HookRemote(UpdateCameraRotation, function(call, self, rot, ...)
 	return call(self, rot, ...)
 end)
 
--- // UI CREATION \\ --
+-- // MOBILE COMPATIBLE UI \\ --
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "RivalsSilentAim"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui = Gui
 
 local Panel = Instance.new("Frame")
 Panel.Size = UDim2.fromOffset(320, 380)
-Panel.Position = UDim2.new(0, 25, 0.5, -190)
+Panel.Position = UDim2.new(0, 15, 0.5, -190) -- Adjusted for mobile screen edges
 Panel.BackgroundColor3 = Color3.fromRGB(22, 20, 27)
 Panel.BackgroundTransparency = 0.08
 Panel.BorderSizePixel = 0
@@ -309,7 +304,6 @@ Title.TextSize = 19
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Panel
 
--- Close Button
 local Close = Instance.new("TextButton")
 Close.Size = UDim2.fromOffset(34, 34)
 Close.Position = UDim2.new(1, -44, 0, 10)
@@ -321,7 +315,6 @@ Close.Font = Enum.Font.GothamBold
 Close.Parent = Panel
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
--- Minimize Button
 local Minimize = Instance.new("TextButton")
 Minimize.Size = UDim2.fromOffset(34, 34)
 Minimize.Position = UDim2.new(1, -82, 0, 10)
@@ -333,7 +326,6 @@ Minimize.Font = Enum.Font.GothamBold
 Minimize.Parent = Panel
 Instance.new("UICorner", Minimize).CornerRadius = UDim.new(0, 8)
 
--- Floating Icon
 local Open = Instance.new("TextButton")
 Open.Size = UDim2.fromOffset(48, 48)
 Open.Position = UDim2.fromOffset(20, 20)
@@ -347,12 +339,10 @@ Open.Visible = false
 Open.Parent = Gui
 Instance.new("UICorner", Open).CornerRadius = UDim.new(0, 12)
 
--- UI Logic
 Close.Activated:Connect(function() Panel.Visible = false; Open.Visible = true end)
 Minimize.Activated:Connect(function() Panel.Visible = false; Open.Visible = true end)
 Open.Activated:Connect(function() Panel.Visible = true; Open.Visible = false end)
 
--- UI Helpers
 local Y = 55
 local function Button(text)
 	local b = Instance.new("TextButton")
@@ -385,7 +375,6 @@ local function Label(text)
 	return l
 end
 
--- UI Elements
 local AimButton = Button("Enabled : OFF")
 local TeamButton = Button("Team Check : ON")
 local WallButton = Button("Wall Check : ON")
@@ -406,7 +395,6 @@ FOVFill.BorderSizePixel = 0
 FOVFill.Parent = FOVBar
 Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
 
--- Slider Logic
 local dragging = false
 local function updateSlider(x)
 	local percent = math.clamp((x - FOVBar.AbsolutePosition.X) / FOVBar.AbsoluteSize.X, 0, 1)
@@ -435,7 +423,6 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- Button Logic
 local function UpdateAimButton()
 	AimButton.Text = "Enabled : " .. (Configuration.Enabled and "ON" or "OFF")
 	AimButton.BackgroundColor3 = Configuration.Enabled and Color3.fromRGB(45, 135, 75) or Color3.fromRGB(40, 37, 47)
@@ -456,16 +443,24 @@ WallButton.Activated:Connect(function()
 	WallButton.Text = "Wall Check : " .. (Configuration.WallCheck and "ON" or "OFF")
 end)
 
--- Keybind Toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.RightShift then
-		Panel.Visible = not Panel.Visible
-		Open.Visible = not Panel.Visible
-	end
+-- // MOBILE TOGGLE (Using a small button instead of RightShift) \\ --
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.fromOffset(40, 40)
+ToggleBtn.Position = UDim2.new(1, -60, 0, 60) -- Top right corner
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 42, 52)
+ToggleBtn.Text = "Aim"
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.TextSize = 12
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = Gui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
+
+ToggleBtn.Activated:Connect(function()
+	Configuration.Enabled = not Configuration.Enabled
+	UpdateAimButton()
 end)
 
--- Dragging Logic
+-- // DRAGGING LOGIC (Fixed for Touch) \\ --
 local dragStart, startPos
 local function setupDrag(guiObj)
 	guiObj.InputBegan:Connect(function(input)
@@ -495,5 +490,5 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- Initial State
 UpdateAimButton()
+print("Rivals Silent Aim Mobile Loaded!")
