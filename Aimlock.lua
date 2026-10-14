@@ -1,5 +1,4 @@
---// AimAssist UI
---// For your own Roblox experience / Studio testing
+
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,10 +6,6 @@ local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-
---==================================================
--- SETTINGS
---==================================================
 
 local Settings = {
 	Enabled = false,
@@ -28,19 +23,11 @@ local Settings = {
 local Target = nil
 local UIVisible = true
 
---==================================================
--- GUI
---==================================================
-
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "AimAssistUI"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
---==================================================
--- FOV CIRCLE
---==================================================
 
 local FOVCircle = Instance.new("Frame")
 FOVCircle.Name = "FOV"
@@ -62,10 +49,6 @@ CircleStroke.Thickness = 2
 CircleStroke.Color = Color3.fromRGB(255, 255, 255)
 CircleStroke.Parent = FOVCircle
 
---==================================================
--- MAIN PANEL
---==================================================
-
 local Panel = Instance.new("Frame")
 Panel.Name = "Panel"
 Panel.Size = UDim2.fromOffset(285, 390)
@@ -83,10 +66,6 @@ local PanelStroke = Instance.new("UIStroke")
 PanelStroke.Color = Color3.fromRGB(80, 75, 90)
 PanelStroke.Transparency = 0.25
 PanelStroke.Parent = Panel
-
---==================================================
--- TITLE
---==================================================
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -55, 0, 45)
@@ -111,10 +90,6 @@ Close.Parent = Panel
 
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 8)
 
---==================================================
--- OPEN BUTTON
---==================================================
-
 local Open = Instance.new("TextButton")
 Open.Size = UDim2.fromOffset(48, 48)
 Open.Position = UDim2.fromOffset(20, 20)
@@ -138,10 +113,6 @@ Open.Activated:Connect(function()
 	Panel.Visible = true
 	Open.Visible = false
 end)
-
---==================================================
--- UI HELPERS
---==================================================
 
 local Y = 58
 
@@ -183,10 +154,6 @@ local function Label(text)
 	return l
 end
 
---==================================================
--- AIM TOGGLE
---==================================================
-
 local AimButton = Button("Aim Assist : OFF")
 
 local function UpdateAimButton()
@@ -209,10 +176,6 @@ AimButton.Activated:Connect(function()
 	UpdateAimButton()
 end)
 
---==================================================
--- TARGET LOCK
---==================================================
-
 local LockButton = Button("Target Lock : ON")
 
 LockButton.Activated:Connect(function()
@@ -222,10 +185,6 @@ LockButton.Activated:Connect(function()
 		"Target Lock : " ..
 		(Settings.TargetLock and "ON" or "OFF")
 end)
-
---==================================================
--- WALL CHECK
---==================================================
 
 local WallButton = Button("Wall Check : ON")
 
@@ -237,10 +196,6 @@ WallButton.Activated:Connect(function()
 		(Settings.WallCheck and "ON" or "OFF")
 end)
 
---==================================================
--- TEAM CHECK
---==================================================
-
 local TeamButton = Button("Team Check : ON")
 
 TeamButton.Activated:Connect(function()
@@ -250,10 +205,6 @@ TeamButton.Activated:Connect(function()
 		"Team Check : " ..
 		(Settings.TeamCheck and "ON" or "OFF")
 end)
-
---==================================================
--- HIT PART
---==================================================
 
 local HitButton = Button("Hit Part : Head")
 
@@ -275,10 +226,6 @@ HitButton.Activated:Connect(function()
 	Settings.HitPart = HitParts[HitIndex]
 	HitButton.Text = "Hit Part : " .. Settings.HitPart
 end)
-
---==================================================
--- FOV SLIDER
---==================================================
 
 local FOVLabel = Label("FOV : 250")
 
@@ -306,10 +253,6 @@ Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
 
 Y += 25
 
---==================================================
--- SMOOTHNESS SLIDER
---==================================================
-
 local SmoothLabel = Label("Smoothness : 85")
 
 local SmoothBar = Instance.new("Frame")
@@ -333,10 +276,6 @@ SmoothFill.BorderSizePixel = 0
 SmoothFill.Parent = SmoothBar
 
 Instance.new("UICorner", SmoothFill).CornerRadius = UDim.new(1, 0)
-
---==================================================
--- SLIDER SYSTEM
---==================================================
 
 local function Slider(bar, fill, min, max, callback)
 	local dragging = false
@@ -396,10 +335,6 @@ Slider(SmoothBar, SmoothFill, 10, 100, function(value)
 	SmoothLabel.Text = "Smoothness : " .. value
 end)
 
---==================================================
--- TARGET PART
---==================================================
-
 local function GetPart(character)
 	if Settings.HitPart == "Head" then
 		return character:FindFirstChild("Head")
@@ -413,10 +348,6 @@ local function GetPart(character)
 
 	return character:FindFirstChild("HumanoidRootPart")
 end
-
---==================================================
--- VALID TARGET
---==================================================
 
 local function ValidPlayer(plr)
 	if plr == LocalPlayer then
@@ -446,10 +377,6 @@ local function ValidPlayer(plr)
 	return GetPart(character) ~= nil
 end
 
---==================================================
--- VISIBILITY
---==================================================
-
 local function Visible(part, character)
 	if not Settings.WallCheck then
 		return true
@@ -477,10 +404,6 @@ local function Visible(part, character)
 
 	return result.Instance:IsDescendantOf(character)
 end
-
---==================================================
--- FIND TARGET
---==================================================
 
 local function FindTarget()
 	local best = nil
@@ -520,10 +443,6 @@ local function FindTarget()
 	return best
 end
 
---==================================================
--- AIM
---==================================================
-
 local function AimAt(part)
 	local velocity = part.AssemblyLinearVelocity
 
@@ -547,10 +466,6 @@ local function AimAt(part)
 			math.clamp(alpha, 0, 1)
 		)
 end
-
---==================================================
--- MAIN LOOP
---==================================================
 
 RunService:BindToRenderStep(
 	"AimAssistUpdate",
@@ -602,10 +517,6 @@ RunService:BindToRenderStep(
 		AimAt(part)
 	end
 )
-
---==================================================
--- DRAG PANEL
---==================================================
 
 local dragging = false
 local dragStart
