@@ -1,5 +1,5 @@
 -- ==========================================================
--- RIVALS SILENT AIM (Mobile Fixed + Anti-Discard)
+-- RIVALS CENTER-FOV SILENT AIM (Mobile Delta)
 -- ==========================================================
 
 repeat task.wait() until game:IsLoaded()
@@ -18,20 +18,17 @@ local CurrentCamera = Workspace.CurrentCamera
 
 -- // MOBILE DETECTION \\ --
 local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-local ScreenGui = nil
 
 -- // CONFIGURATION \\ --
 local Configuration = {
 	Enabled    = false,
-	SilentAim  = true,
-	FOV        = 150,
-	MaxAngle   = 30,
+	FOV        = 80,   -- Small center FOV (in pixels)
+	MaxAngle   = 45,
 	TeamCheck  = true,
 	WallCheck  = true,
 	HitParts   = { "Head", "UpperTorso", "HumanoidRootPart" },
 	Prediction = 0.06,
 	ShowFOV    = true,
-	TargetRate = 1 / 20,
 	CacheRate  = 1,
 }
 
@@ -56,14 +53,15 @@ pcall(function()
 	Utility = require(ReplicatedStorage.Modules.Utility)
 end)
 
--- // FOV CIRCLE \\ --
+-- // CENTER FOV CIRCLE \\ --
 local FOVCircle = nil
 pcall(function()
 	FOVCircle           = Drawing.new("Circle")
-	FOVCircle.Color     = Color3.fromRGB(125, 125, 140)
-	FOVCircle.Thickness = 1
-	FOVCircle.NumSides  = 48
+	FOVCircle.Color     = Color3.fromRGB(255, 255, 255)
+	FOVCircle.Thickness = 2
+	FOVCircle.NumSides  = 60
 	FOVCircle.Filled    = false
+	FOVCircle.Transparency = 1
 end)
 
 -- // TARGETING LOGIC \\ --
@@ -124,9 +122,9 @@ local function IsVisible(from, to, char)
 	return hit.Instance:IsDescendantOf(char)
 end
 
-local LastTarget, LastPart, LastScan = nil, nil, 0
+local LastTarget, LastPart = nil, nil
 
--- // MOBILE COMPATIBLE TARGETING \\ --
+-- // CENTER FOV TARGETING FUNCTION \\ --
 local function GetTarget()
 	if not Configuration.Enabled then
 		getgenv().__SA_Lock = false
@@ -134,25 +132,11 @@ local function GetTarget()
 		return nil, nil
 	end
 
-	if tick() - LastScan < Configuration.TargetRate then
-		return LastTarget, LastPart
-	end
-	LastScan = tick()
 	RefreshCache()
 
-	-- MOBILE FIX: Get touch position instead of mouse position
-	local cx, cy
-	if isMobile then
-		local touches = UserInputService:GetFocusedTextBox() -- Check if typing
-		if touches then return LastTarget, LastPart end
-		
-		-- Get the center of the screen for mobile aiming reference
-		cx = CurrentCamera.ViewportSize.X / 2
-		cy = CurrentCamera.ViewportSize.Y / 2
-	else
-		local mouse = UserInputService:GetMouseLocation()
-		cx, cy = mouse.X, mouse.Y
-	end
+	-- Always use the CENTER of the screen
+	local cx = CurrentCamera.ViewportSize.X / 2
+	local cy = CurrentCamera.ViewportSize.Y / 2
 
 	local camPos  = CurrentCamera.CFrame.Position
 	local camLook = CurrentCamera.CFrame.LookVector
@@ -173,6 +157,7 @@ local function GetTarget()
 						local dx, dy = s.X - cx, s.Y - cy
 						local d = math.sqrt(dx * dx + dy * dy)
 
+						-- Only lock if the enemy is INSIDE the center FOV circle
 						if d < bestDist then
 							local dir = (aim - camPos).Unit
 							if camLook:Dot(dir) > math.cos(math.rad(Configuration.MaxAngle)) then
@@ -199,11 +184,12 @@ local function GetTarget()
 		getgenv().__SA_Lock = false
 	end
 
+	-- Update the center FOV Circle
 	if FOVCircle then
 		FOVCircle.Position = Vector2.new(cx, cy)
 		FOVCircle.Radius   = Configuration.FOV
 		FOVCircle.Visible  = Configuration.ShowFOV and Configuration.Enabled
-		FOVCircle.Color    = getgenv().__SA_Lock and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(125, 125, 140)
+		FOVCircle.Color    = getgenv().__SA_Lock and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(255, 255, 255)
 	end
 
 	return bestPos, bestPart
@@ -211,7 +197,7 @@ end
 
 RunService.RenderStepped:Connect(function() GetTarget() end)
 
--- // REMOTE HOOKING (Fixed for Discard Error) \\ --
+-- // REMOTE HOOKING \\ --
 local function Encode(cf)
 	local rx, ry, rz = cf:ToOrientation()
 	return { [Char0] = cf.X, [Char1] = cf.Y, [Char2] = cf.Z, [Char3] = rx, [Char4] = ry, [Char5] = rz }
@@ -271,17 +257,16 @@ HookRemote(UpdateCameraRotation, function(call, self, rot, ...)
 	return call(self, rot, ...)
 end)
 
--- // MOBILE COMPATIBLE UI \\ --
+-- // UI CREATION \\ --
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "RivalsSilentAim"
+Gui.Name = "RivalsCenterAim"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui = Gui
 
 local Panel = Instance.new("Frame")
-Panel.Size = UDim2.fromOffset(320, 380)
-Panel.Position = UDim2.new(0, 15, 0.5, -190) -- Adjusted for mobile screen edges
+Panel.Size = UDim2.fromOffset(320, 340)
+Panel.Position = UDim2.new(0, 15, 0.5, -170)
 Panel.BackgroundColor3 = Color3.fromRGB(22, 20, 27)
 Panel.BackgroundTransparency = 0.08
 Panel.BorderSizePixel = 0
@@ -297,7 +282,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -85, 0, 45)
 Title.Position = UDim2.fromOffset(15, 5)
 Title.BackgroundTransparency = 1
-Title.Text = "Rivals Silent Aim"
+Title.Text = "Center Aim Assist"
 Title.TextColor3 = Color3.new(1, 1, 1)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 19
@@ -378,7 +363,7 @@ end
 local AimButton = Button("Enabled : OFF")
 local TeamButton = Button("Team Check : ON")
 local WallButton = Button("Wall Check : ON")
-local FOVLabel = Label("FOV : 150")
+local FOVLabel = Label("FOV : 80")
 
 local FOVBar = Instance.new("Frame")
 FOVBar.Size = UDim2.new(1, -30, 0, 8)
@@ -389,16 +374,17 @@ FOVBar.Parent = Panel
 Instance.new("UICorner", FOVBar).CornerRadius = UDim.new(1, 0)
 
 local FOVFill = Instance.new("Frame")
-FOVFill.Size = UDim2.new(Configuration.FOV / 500, 0, 1, 0)
+FOVFill.Size = UDim2.new(Configuration.FOV / 300, 0, 1, 0)
 FOVFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
 FOVFill.BorderSizePixel = 0
 FOVFill.Parent = FOVBar
 Instance.new("UICorner", FOVFill).CornerRadius = UDim.new(1, 0)
 
+-- Slider Logic
 local dragging = false
 local function updateSlider(x)
 	local percent = math.clamp((x - FOVBar.AbsolutePosition.X) / FOVBar.AbsoluteSize.X, 0, 1)
-	local value = math.floor(50 + (450 * percent))
+	local value = math.floor(20 + (280 * percent)) -- FOV range: 20 to 300
 	Configuration.FOV = value
 	FOVLabel.Text = "FOV : " .. value
 	FOVFill.Size = UDim2.new(percent, 0, 1, 0)
@@ -443,24 +429,24 @@ WallButton.Activated:Connect(function()
 	WallButton.Text = "Wall Check : " .. (Configuration.WallCheck and "ON" or "OFF")
 end)
 
--- // MOBILE TOGGLE (Using a small button instead of RightShift) \\ --
+-- // MOBILE TOGGLE BUTTON (Top Right) \\ --
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.fromOffset(40, 40)
-ToggleBtn.Position = UDim2.new(1, -60, 0, 60) -- Top right corner
+ToggleBtn.Size = UDim2.fromOffset(50, 50)
+ToggleBtn.Position = UDim2.new(1, -65, 0, 60)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 42, 52)
 ToggleBtn.Text = "Aim"
 ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleBtn.TextSize = 12
+ToggleBtn.TextSize = 14
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.Parent = Gui
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 12)
 
 ToggleBtn.Activated:Connect(function()
 	Configuration.Enabled = not Configuration.Enabled
 	UpdateAimButton()
 end)
 
--- // DRAGGING LOGIC (Fixed for Touch) \\ --
+-- // DRAGGING LOGIC \\ --
 local dragStart, startPos
 local function setupDrag(guiObj)
 	guiObj.InputBegan:Connect(function(input)
@@ -491,4 +477,4 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 UpdateAimButton()
-print("Rivals Silent Aim Mobile Loaded!")
+print("Rivals Center FOV Aim Loaded!")
