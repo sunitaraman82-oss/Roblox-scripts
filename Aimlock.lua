@@ -1,638 +1,456 @@
-local repS  = cloneref(game:GetService("ReplicatedStorage"))
-local plrs  = cloneref(game:GetService("Players"))
-local runS  = cloneref(game:GetService("RunService"))
-local ws    = cloneref(game:GetService("Workspace"))
-local uis   = cloneref(game:GetService("UserInputService"))
-local gethui = (getgenv().gethui or function() return game:GetService("CoreGui") end)
-local lplr  = plrs.LocalPlayer
 
-local util  = require(repS.Modules.Utility)
-local enum  = require(repS.Modules.EnumLibrary)
+if getgenv().ZK_Unload then pcall(getgenv().ZK_Unload) end
+
+local repS = cloneref(game:GetService("ReplicatedStorage"))
+local plrs = cloneref(game:GetService("Players"))
+local runS = cloneref(game:GetService("RunService"))
+local ws   = cloneref(game:GetService("Workspace"))
+local uis  = cloneref(game:GetService("UserInputService"))
+local lplr = plrs.LocalPlayer
+local PlayerGui = lplr:WaitForChild("PlayerGui")
+
+local util = require(repS.Modules.Utility)
+local enum = require(repS.Modules.EnumLibrary)
 local FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
+local UseItemRemote = repS.Remotes.Replication.Fighter.UseItem
+local RespawnRemote = repS.Remotes.Duels.RespawnNow
 
-local Config = {
-    Enabled      = true,
-    FireRate     = 0.05,
-    Slot         = "Secondary",
-    ToggleKey    = Enum.KeyCode.RightShift,
-    DesyncAim    = true,
-    ProjectileFallback = true,
+getgenv().Config = {
+    Enabled        = true,
+    FireRate       = 0.001,
+    WeaponSlot     = "Primary",
+    MaxDistance    = 1000,
+    
+    AntiExplosion  = true,
+    AntiExplosionHeight = 300,
+    
+    DesyncEnabled  = true,
+    DesyncMode     = "offscreen",
+    DesyncHeight   = 1.0,
+    DesyncBack     = 2.0,
+
+    AntiAim        = true,
+    AntiAimSpeed   = 360,
 }
-getgenv().RageZombieConfig = Config
 
-local SLOT_NUM = { Primary = 1, Secondary = 2, Melee = 3 }
-local function slotNum() return SLOT_NUM[Config.Slot] or 2 end
+local slots = { Primary = 1, Secondary = 2, Melee = 3 }
+local State = { unloaded = false, lastFire = 0, lastEquip = 0, target = nil, restoreConn = nil, connections = {} }
 
-local RootDesync = {}
-RootDesync.__index = RootDesync
-function RootDesync.new(root)
-    local self = setmetatable({ _root = root, _old = nil, _serverCF = nil }, RootDesync)
-    self._conn = runS.Heartbeat:Connect(function()
-        if self._serverCF ~= nil then
-            self._old = self._root.CFrame
-            self._root.CFrame = self._serverCF
-        end
-    end)
-    return self
+local function track(c)
+    table.insert(State.connections, c)
+    return c
 end
-function RootDesync:Set(cf) self._serverCF = cf end
-function RootDesync:Restore()
-    if self._old ~= nil then self._root.CFrame = self._old self._old = nil end
-    self._serverCF = nil
-end
-function RootDesync:Destroy() self:Restore() self._conn:Disconnect() end
 
-local function getTarget()
+track(lplr.CharacterAdded:Connect(function()
+    task.wait(0.1)
     local char = lplr.Character
-    if not char then return nil, nil end
-    local myRoot = char:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return nil, nil end
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        pcall(function() RespawnRemote:FireServer() end)
+    end
+end))
 
-    local camPos = workspace.CurrentCamera.CFrame.Position
-    local best, bestHitbox, bestScore = nil, nil, math.huge
-
-    for _, obj in ipairs(ws:GetDescendants()) do
-        if obj:IsA("Model") then
-            local hum = obj:FindFirstChildWhichIsA("Humanoid")
-            if not hum or hum.Health <= 0 then continue end
-            if obj == char or plrs:GetPlayerFromCharacter(obj) then continue end
-
-            local hitbox =
-                obj:FindFirstChild("HitboxHead")
-                or obj:FindFirstChild("HitboxHeadSmall")
-                or obj:FindFirstChild("Head")
-                or obj:FindFirstChild("ZombieHead")
-            if not hitbox then continue end
-
-            local anchor =
-                obj:FindFirstChild("HitboxBody")
-                or obj:FindFirstChild("HitboxBodySmall")
-                or obj:FindFirstChild("HumanoidRootPart")
-                or hitbox
-
-            local score = (camPos - anchor.Position).Magnitude
-            if score < bestScore then
-                bestScore, best, bestHitbox = score, anchor, hitbox
-            end
+track(task.spawn(function()
+    while not State.unloaded do
+        task.wait(0.5)
+        if not getgenv().Config.Enabled then continue end
+        if tick() - State.lastEquip < 0.5 then continue end
+        State.lastEquip = tick()
+        local lf = FighterController.LocalFighter
+        if lf and not lf.EquippedItem then
+            pcall(function() lf:EquipItem(slots[getgenv().Config.WeaponSlot] or 1) end)
         end
     end
-    return best, bestHitbox
-end
+end))
 
-local function getSlotItem()
-    local lf = FighterController.LocalFighter
-    if not lf then return nil end
-    local items = lf:GetItems()
-    if not items then return nil end
-    local n = slotNum()
-    local it = items[n]
-    if it and it.Info then return it end
-    return nil
-end
-
-task.spawn(function()
-    while not FighterController.LocalFighter do task.wait(0.1) end
-    while true do
-        if Config.Enabled then
-            pcall(function()
-                FighterController.LocalFighter:EquipItem(slotNum())
-            end)
-        end
-        task.wait(1)
-    end
-end)
-
-local function diagnose()
-    local lines = {}
-    local function L(s) table.insert(lines, s) end
-
-    local lf = FighterController.LocalFighter
-    if not lf then
-        return "✗ LocalFighter not ready — wait until you've spawned."
-    end
-
-    local items = lf:GetItems()
-    L(("LocalFighter: ok  |  items: %d  |  slot: %s (index %d)")
-        :format(#items, Config.Slot, slotNum()))
-
-    for i, it in ipairs(items) do
-        local info = it.Info or {}
-        L(("  slot %d: %s | Type=%s | IsRaycast=%s | Ammo=%s | Reserve=%s")
-            :format(i, it.Name or "?",
-                tostring(info.Type),
-                tostring(it.IsRaycast),
-                tostring(it.GetAmmo and it:GetAmmo() or "n/a"),
-                tostring(it.GetAmmoReserve and it:GetAmmoReserve() or "n/a")))
-    end
-
-    local item = getSlotItem()
-    if not item then
-        L(("✗ Slot %s is empty — nothing to fire."):format(Config.Slot))
-        return table.concat(lines, "\n")
-    end
-
-    L(("Selected item: %s | Type=%s | IsRaycast=%s")
-        :format(item.Name, tostring(item.Info.Type), tostring(item.IsRaycast)))
-
-    if item.Info.Type ~= "Gun" then
-        L(("✗ Type is %q, not %q — rage loop will refuse to fire it.")
-            :format(tostring(item.Info.Type), "Gun"))
-        return table.concat(lines, "\n")
-    end
-
-    local equipped = lf.EquippedItem
-    if equipped ~= item then
-        L(("⚠ Equipped is %s, not selected %s — equip loop will retry.")
-            :format(tostring(equipped and equipped.Name), item.Name))
-    else
-        L("✓ Selected item is currently equipped.")
-    end
-
-    if item.GetAmmo and item:GetAmmo() == 0 then
-        L("⚠ No ammo — fire loop will call :Reload() instead of shooting.")
-    end
-
-    local root, hitbox = getTarget()
-    if not root or not hitbox then
-        L("✗ No zombie target in Workspace.")
-    else
-        L(("✓ Target: %s | hitbox: %s (%s)")
-            :format(root.Parent.Name, hitbox.Name, hitbox.ClassName))
-        L(("  hitbox in-bounds: %s"):format(tostring(hitbox:IsDescendantOf(ws))))
-    end
-
-    L("Hitbox resolution (Kicia dc.ResolveHitboxes):")
-    local found = {}
-    for _, name in ipairs({ "HitboxHead", "HitboxBody", "HitboxHeadSmall", "HitboxBodySmall",
-                            "Head", "ZombieHead", "Torso", "ZombieTorso" }) do
-        for _, m in ipairs(ws:GetDescendants()) do
-            if m:IsA("Model") and m:FindFirstChild(name) then
-                local hum = m:FindFirstChildWhichIsA("Humanoid")
-                if hum and hum.Health > 0 and m ~= lplr.Character
-                   and not plrs:GetPlayerFromCharacter(m) then
-                    found[name] = m
-                    break
-                end
-            end
-        end
-    end
-    if next(found) then
-        for name, m in pairs(found) do
-            L(("  ✓ %s -> %s"):format(name, m.Name))
-        end
-    else
-        L("  ✗ No zombie hitboxes found at all — map uses a different naming scheme.")
-    end
-
-    local branch = item.IsRaycast and "Hitscan (cameraData table)" or "Projectile (flat fields)"
-    L(("Payload branch: %s"):format(branch))
-
-    if item.IsRaycast and Config.ProjectileFallback then
-        L("  note: IsRaycast=true, so cameraData table is used (secondary hitscan).")
-    elseif not item.IsRaycast and not Config.ProjectileFallback then
-        L("  ✗ Projectile weapon but ProjectileFallback=false — shots will be ignored.")
-    elseif not item.IsRaycast then
-        L("  ✓ Projectile fallback enabled — shots will use flat CFrame payload.")
-    end
-
-    return table.concat(lines, "\n")
-end
-
-local desync   = nil
-local lastFire = 0
-
-local function fakeCamOrigin(head)
+local function getClosestTarget()
     local char = lplr.Character
     if not char then return nil end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil end
-    local offset = myRoot.CFrame * CFrame.new(0, 3, -2)
-    return CFrame.lookAt(offset.Position, head.Position)
+
+    local closest, closestDist = nil, getgenv().Config.MaxDistance
+    local myPos = myRoot.Position
+
+    for _, obj in ipairs(ws:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= char and not plrs:GetPlayerFromCharacter(obj) then
+            local hum = obj:FindFirstChildWhichIsA("Humanoid")
+            if hum and hum.Health > 0 then
+                local root = obj:FindFirstChild("HumanoidRootPart")
+                local head = obj:FindFirstChild("Head") or obj:FindFirstChild("ZombieHead")
+                
+                if root and head then
+                    local d = (myPos - root.Position).Magnitude
+                    if d < closestDist then
+                        closestDist = d
+                        closest = { Model = obj, Root = root, Head = head, Hum = hum, Distance = d }
+                    end
+                end
+            end
+        end
+    end
+    return closest
 end
 
-runS.Heartbeat:Connect(function()
-    local char = lplr.Character
-    if not char then
-        if desync then desync:Destroy() desync = nil end
-        return
+local function computeDesyncCFrame(target, myRoot)
+    local root, head = target.Root, target.Head
+    local cfg = getgenv().Config
+    local offset
+
+    if cfg.DesyncMode == "offscreen" then
+        return CFrame.lookAt(root.Position + Vector3.new(0, 1000, 0), head.Position)
+    elseif cfg.DesyncMode == "behind" then
+        offset = CFrame.new(0, cfg.DesyncHeight, cfg.DesyncBack)
+    elseif cfg.DesyncMode == "front" then
+        offset = CFrame.new(0, cfg.DesyncHeight, -cfg.DesyncBack)
+    else
+        offset = CFrame.new(0, cfg.DesyncHeight + 2, 0)
     end
+
+    return CFrame.lookAt((root.CFrame * offset).Position, head.Position)
+end
+
+local function fireWithDesync(item, target)
+    local char = lplr.Character
+    if not char then return end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
 
-    if desync == nil or desync._root ~= myRoot then
-        if desync then desync:Destroy() end
-        desync = RootDesync.new(myRoot)
-    end
+    local cfg = getgenv().Config
+    local originPos, aimPos = myRoot.Position, target.Head.Position
 
-    if not Config.Enabled then desync:Restore() return end
+    if cfg.DesyncEnabled then
+        local desyncCF = computeDesyncCFrame(target, myRoot)
+        originPos = desyncCF.Position
 
-    local lf = FighterController.LocalFighter
-    if not lf then desync:Restore() return end
-    local item = getSlotItem()
-    local equipped = lf.EquippedItem
-    if not item or not equipped or equipped ~= item then
-        pcall(function() lf:EquipItem(slotNum()) end)
-        desync:Restore()
-        return
-    end
-    local info = item.Info
-    if not info or info.Type ~= "Gun" then desync:Restore() return end
-    if item.GetAmmo and item:GetAmmo() == 0 then
-        pcall(function() item:Reload() end)
-        desync:Restore()
-        return
-    end
+        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
+        myRoot.CFrame = desyncCF
 
-    local targetRoot, targetHitbox = getTarget()
-    if not targetHitbox then desync:Restore() return end
-
-    local aimCF = fakeCamOrigin(targetHitbox)
-    if not aimCF then return end
-
-    if Config.DesyncAim then desync:Set(aimCF) end
-
-    if tick() - lastFire < Config.FireRate then return end
-    lastFire = tick()
-
-    if item.IsRaycast then
-        local objOffset = targetHitbox.CFrame:ToObjectSpace(CFrame.new(targetHitbox.Position))
-        local cameraData = {
-            [utf8.char(1)] = {
-                [utf8.char(0)] = util:EncodeCFrame(aimCF),
-                [utf8.char(1)] = util:EncodeCFrame(targetHitbox.CFrame),
-                [utf8.char(2)] = targetHitbox,
-                [utf8.char(3)] = util:EncodeCFrame(objOffset),
-            }
-        }
-        repS.Remotes.Replication.Fighter.UseItem:FireServer(
-            item:Get("ObjectID"),
-            enum:ToEnum("StartShooting"),
-            cameraData,
-            nil
-        )
-    elseif Config.ProjectileFallback then
-        local flat = {
-            [utf8.char(0)] = util:EncodeCFrame(aimCF),
-            [utf8.char(1)] = util:EncodeCFrame(aimCF),
-            [utf8.char(2)] = targetHitbox,
-            [utf8.char(3)] = util:EncodeCFrame(CFrame.new(0, 0, 0)),
-        }
-        repS.Remotes.Replication.Fighter.UseItem:FireServer(
-            item:Get("ObjectID"),
-            enum:ToEnum("StartShooting"),
-            flat,
-            nil
-        )
-    end
-end)
-
-runS.RenderStepped:Connect(function()
-    if desync then desync:Restore() end
-end)
-
-local COL = {
-    BG      = Color3.fromRGB(18, 18, 20),
-    PANEL   = Color3.fromRGB(26, 26, 30),
-    ELEMENT = Color3.fromRGB(34, 34, 40),
-    ACCENT  = Color3.fromRGB(200, 60, 60),
-    TEXT    = Color3.fromRGB(230, 230, 230),
-    MUTED   = Color3.fromRGB(150, 150, 160),
-    OK      = Color3.fromRGB(90, 200, 120),
-    WARN    = Color3.fromRGB(240, 190, 90),
-}
-
-local Font = Font.new("rbxassetid://12187365364", Enum.FontWeight.Medium, Enum.FontStyle.Normal)
-
-local function make(className, props, children)
-    local i = Instance.new(className)
-    for k, v in pairs(props or {}) do i[k] = v end
-    for _, c in ipairs(children or {}) do c.Parent = i end
-    return i
-end
-
-local gui = make("ScreenGui", {
-    Name = "RageZombieUI",
-    DisplayOrder = 9999,
-    IgnoreGuiInset = true,
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-    Parent = gethui(),
-})
-
-local win = make("Frame", {
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromScale(0.5, 0.5),
-    Size = UDim2.fromOffset(420, 560),
-    BackgroundColor3 = COL.BG,
-    BorderSizePixel = 0,
-    Visible = true,
-}, {
-    make("UICorner", { CornerRadius = UDim.new(0, 10) }),
-    make("UIStroke", { Color = COL.ACCENT, Transparency = 0.4, Thickness = 1.5 }),
-})
-win.Parent = gui
-
-local titleBar = make("Frame", {
-    Size = UDim2.new(1, 0, 0, 40),
-    BackgroundColor3 = COL.PANEL,
-    BorderSizePixel = 0,
-    Active = true,
-}, {
-    make("UICorner", { CornerRadius = UDim.new(0, 10) }),
-})
-titleBar.Parent = win
-
-make("TextLabel", {
-    Text = "Rage Zombie",
-    FontFace = Font,
-    TextSize = 16,
-    TextColor3 = COL.TEXT,
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, -80, 1, 0),
-    Position = UDim2.fromOffset(12, 0),
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = titleBar,
-})
-
-local enabledBtn = make("TextButton", {
-    Size = UDim2.fromOffset(70, 26),
-    Position = UDim2.new(1, -170, 0.5, -13),
-    BackgroundColor3 = COL.ACCENT,
-    Text = "ON",
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    AutoButtonColor = false,
-    Parent = titleBar,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 6) }) })
-
-local closeBtn = make("TextButton", {
-    Size = UDim2.fromOffset(26, 26),
-    Position = UDim2.new(1, -36, 0.5, -13),
-    BackgroundColor3 = COL.ELEMENT,
-    Text = "×",
-    FontFace = Font,
-    TextSize = 16,
-    TextColor3 = COL.TEXT,
-    AutoButtonColor = false,
-    Parent = titleBar,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 6) }) })
-
-local body = make("ScrollingFrame", {
-    Size = UDim2.new(1, -20, 1, -50),
-    Position = UDim2.fromOffset(10, 45),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = COL.ACCENT,
-    CanvasSize = UDim2.new(),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, {
-    make("UIListLayout", {
-        Padding = UDim.new(0, 8),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }),
-    make("UIPadding", { PaddingBottom = UDim.new(0, 10) }),
-})
-body.Parent = win
-
-local function section(text)
-    make("TextLabel", {
-        Text = text,
-        FontFace = Font,
-        TextSize = 12,
-        TextColor3 = COL.MUTED,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = body,
-    })
-end
-
-local function row(height)
-    return make("Frame", {
-        Size = UDim2.new(1, 0, 0, height or 36),
-        BackgroundColor3 = COL.ELEMENT,
-        BorderSizePixel = 0,
-        Parent = body,
-    }, { make("UICorner", { CornerRadius = UDim.new(0, 6) }) })
-end
-
-local function label(parent, text, x, w)
-    return make("TextLabel", {
-        Text = text,
-        FontFace = Font,
-        TextSize = 13,
-        TextColor3 = COL.TEXT,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(x, 0),
-        Size = UDim2.new(0, w, 1, 0),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = parent,
-    })
-end
-
-section("WEAPON SLOT")
-local slotRow = row(40)
-local slotBtns = {}
-local slotOrder = { "Primary", "Secondary", "Melee" }
-
-local function refreshSlotBtns()
-    for name, b in pairs(slotBtns) do
-        if name == Config.Slot then
-            b.BackgroundColor3 = COL.ACCENT
-            b.TextColor3 = COL.TEXT
-        else
-            b.BackgroundColor3 = COL.ELEMENT
-            b.TextColor3 = COL.MUTED
-        end
-    end
-end
-
-for i, name in ipairs(slotOrder) do
-    local btn = make("TextButton", {
-        Text = name,
-        FontFace = Font,
-        TextSize = 13,
-        TextColor3 = COL.MUTED,
-        BackgroundColor3 = COL.ELEMENT,
-        AutoButtonColor = false,
-        Position = UDim2.new(0, (i - 1) * (1/3) + 0.01, 0, 4),
-        Size = UDim2.new(1/3 - 0.02, 0, 1, -8),
-        Parent = slotRow,
-    }, { make("UICorner", { CornerRadius = UDim.new(0, 5) }) })
-
-    btn.MouseButton1Click:Connect(function()
-        Config.Slot = name
-        refreshSlotBtns()
-    end)
-
-    slotBtns[name] = btn
-end
-refreshSlotBtns()
-
-section("FIRE RATE (s)")
-local rateRow = row(36)
-local rateLabel = make("TextLabel", {
-    Text = string.format("%.2f", Config.FireRate),
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    BackgroundTransparency = 1,
-    Position = UDim2.new(1, -60, 0, 0),
-    Size = UDim2.fromOffset(50, 36),
-    Parent = rateRow,
-})
-local rateBox = make("TextBox", {
-    Text = tostring(Config.FireRate),
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    BackgroundTransparency = 1,
-    Position = UDim2.new(1, -110, 0, 0),
-    Size = UDim2.fromOffset(50, 36),
-    ClearTextOnFocus = true,
-    Parent = rateRow,
-})
-label(rateRow, "Delay between shots", 10, 200)
-rateBox.FocusLost:Connect(function()
-    local n = tonumber(rateBox.Text)
-    if n and n >= 0.01 and n <= 2 then
-        Config.FireRate = n
-        rateLabel.Text = string.format("%.2f", n)
-    else
-        rateBox.Text = tostring(Config.FireRate)
-    end
-end)
-
-section("OPTIONS")
-local desyncRow = row(36)
-local desyncBtn = make("TextButton", {
-    Text = "ON",
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    BackgroundColor3 = COL.ACCENT,
-    AutoButtonColor = false,
-    Position = UDim2.new(1, -66, 0.5, -13),
-    Size = UDim2.fromOffset(56, 26),
-    Parent = desyncRow,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 5) }) })
-label(desyncRow, "Aim desync", 10, 200)
-desyncBtn.MouseButton1Click:Connect(function()
-    Config.DesyncAim = not Config.DesyncAim
-    desyncBtn.Text = Config.DesyncAim and "ON" or "OFF"
-    desyncBtn.BackgroundColor3 = Config.DesyncAim and COL.ACCENT or COL.ELEMENT
-end)
-
-local projRow = row(36)
-local projBtn = make("TextButton", {
-    Text = "ON",
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    BackgroundColor3 = COL.ACCENT,
-    AutoButtonColor = false,
-    Position = UDim2.new(1, -66, 0.5, -13),
-    Size = UDim2.fromOffset(56, 26),
-    Parent = projRow,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 5) }) })
-label(projRow, "Projectile fallback", 10, 200)
-projBtn.MouseButton1Click:Connect(function()
-    Config.ProjectileFallback = not Config.ProjectileFallback
-    projBtn.Text = Config.ProjectileFallback and "ON" or "OFF"
-    projBtn.BackgroundColor3 = Config.ProjectileFallback and COL.ACCENT or COL.ELEMENT
-end)
-
-section("SECONDARY HITTING CHECK")
-local diagRow = row(36)
-local diagBtn = make("TextButton", {
-    Text = "Run Check",
-    FontFace = Font,
-    TextSize = 13,
-    TextColor3 = COL.TEXT,
-    BackgroundColor3 = COL.ACCENT,
-    AutoButtonColor = false,
-    Position = UDim2.new(0, 10, 0, 4),
-    Size = UDim2.new(1, -20, 1, -8),
-    Parent = diagRow,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 5) }) })
-
-local diagOut = make("TextLabel", {
-    Text = "Click Run Check to inspect secondary hitboxes, IsRaycast, ammo, and payload branch.",
-    FontFace = Font,
-    TextSize = 12,
-    TextColor3 = COL.MUTED,
-    BackgroundColor3 = COL.PANEL,
-    BackgroundTransparency = 0,
-    Size = UDim2.new(1, 0, 0, 220),
-    TextWrapped = true,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    RichText = true,
-    Parent = body,
-}, { make("UICorner", { CornerRadius = UDim.new(0, 6) }),
-     make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
-                          PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }) })
-
-local function colorLine(line)
-    if line:sub(1, 1) == "✓" then return '<font color="#5AC878">' .. line .. '</font>' end
-    if line:sub(1, 1) == "✗" then return '<font color="#E85A5A">' .. line .. '</font>' end
-    if line:sub(1, 1) == "⚠" then return '<font color="#F0BE5A">' .. line .. '</font>' end
-    return line
-end
-
-diagBtn.MouseButton1Click:Connect(function()
-    local out = diagnose()
-    local colored = {}
-    for line in (out .. "\n"):gmatch("(.-)\n") do
-        table.insert(colored, colorLine(line))
-    end
-    diagOut.Text = table.concat(colored, "\n")
-    diagOut.TextColor3 = COL.TEXT
-end)
-
-local function setEnabled(v)
-    Config.Enabled = v
-    enabledBtn.Text = v and "ON" or "OFF"
-    enabledBtn.BackgroundColor3 = v and COL.ACCENT or COL.ELEMENT
-end
-enabledBtn.MouseButton1Click:Connect(function()
-    setEnabled(not Config.Enabled)
-end)
-
-local function setVisible(v)
-    win.Visible = v
-end
-closeBtn.MouseButton1Click:Connect(function()
-    setVisible(false)
-end)
-
-uis.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Config.ToggleKey then
-        setVisible(not win.Visible)
-    end
-end)
-
-local dragging, dragStart, startPos
-titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = win.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        if State.restoreConn then State.restoreConn:Disconnect() end
+        State.restoreConn = runS.RenderStepped:Connect(function()
+            if myRoot and myRoot.Parent then
+                myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel
+            end
+            if State.restoreConn then State.restoreConn:Disconnect(); State.restoreConn = nil end
         end)
     end
-end)
-uis.InputChanged:Connect(function(input)
-    if not dragging then return end
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-       or input.UserInputType == Enum.UserInputType.Touch then
-        local delta = input.Position - dragStart
-        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                                  startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    
+    if cfg.AntiAim and myRoot then
+        local spinAngle = math.rad((tick() * cfg.AntiAimSpeed) % 360)
+        -- Spin the server-side CFrame violently to break zombie attacks/explosions
+        myRoot.CFrame = CFrame.new(myRoot.Position) * CFrame.Angles(0, spinAngle, 0) * CFrame.Angles(math.rad(math.random(-90, 90)), 0, 0)
+        
+        if State.restoreConn then State.restoreConn:Disconnect() end
+        State.restoreConn = runS.RenderStepped:Connect(function()
+            if myRoot and myRoot.Parent then
+                myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel
+            end
+            if State.restoreConn then State.restoreConn:Disconnect(); State.restoreConn = nil end
+        end)
     end
-end)
+
+    local aimCF = CFrame.lookAt(originPos, aimPos)
+    local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
+    local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(aimPos + rand))
+
+    local cameraData = {
+        [utf8.char(1)] = {
+            [utf8.char(0)] = util:EncodeCFrame(aimCF),
+            [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame),
+            [utf8.char(2)] = target.Head,
+            [utf8.char(3)] = util:EncodeCFrame(objSpaceHead),
+        }
+    }
+
+    pcall(function()
+        UseItemRemote:FireServer(item:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil)
+    end)
+end
+
+local currentlyDodging = false
+
+local function dodgeExplosion()
+    if currentlyDodging or not getgenv().Config.AntiExplosion then return end
+    local char = lplr.Character
+    if not char then return end
+    local myRoot = char:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+
+    currentlyDodging = true
+    local originalCF = myRoot.CFrame
+    
+    myRoot.CFrame = originalCF + Vector3.new(0, getgenv().Config.AntiExplosionHeight, 0)
+    
+    task.delay(0.15, function()
+        if myRoot and myRoot.Parent then
+            myRoot.CFrame = originalCF
+        end
+        currentlyDodging = false
+    end)
+end
+
+track(runS.Heartbeat:Connect(function()
+    if State.unloaded or not getgenv().Config.Enabled then return end
+
+    local target = State.target
+    if target and target.Model and target.Model.Parent and target.Hum then
+        if target.Hum.Health > 0 and target.Hum.Health < (target.Hum.MaxHealth * 0.15) then
+            dodgeExplosion()
+        end
+    end
+
+    local lf = FighterController.LocalFighter
+    if not lf or not lf.EquippedItem then return end
+
+    local newTarget = getClosestTarget()
+    State.target = newTarget
+    if not newTarget then return end
+
+    if tick() - State.lastFire < getgenv().Config.FireRate then return end
+    State.lastFire = tick()
+    fireWithDesync(lf.EquippedItem, newTarget)
+end))
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "ZK_CustomUI"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.Parent = PlayerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "Main"
+mainFrame.Size = UDim2.fromOffset(280, 450)
+mainFrame.Position = UDim2.new(0.5, -140, 0.5, -225)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true 
+mainFrame.Visible = false
+mainFrame.Parent = gui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(80, 180, 80)
+stroke.Thickness = 1.5
+stroke.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Text = "Zombie Killer"
+title.TextColor3 = Color3.fromRGB(80, 180, 80)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.Parent = mainFrame
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(32, 32)
+closeBtn.Position = UDim2.new(1, -38, 0, 4)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = mainFrame
+Instance.new("UICorner").Parent = closeBtn
+closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -20, 1, -50)
+scroll.Position = UDim2.fromOffset(10, 45)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4
+scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 180, 80)
+scroll.Parent = mainFrame
+
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 10)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = scroll
+
+local floatBtn = Instance.new("TextButton")
+floatBtn.Size = UDim2.fromOffset(50, 50)
+floatBtn.Position = UDim2.new(0, 20, 0.5, 0)
+floatBtn.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
+floatBtn.Text = "ZK"
+floatBtn.TextColor3 = Color3.new(1,1,1)
+floatBtn.Font = Enum.Font.GothamBold
+floatBtn.TextSize = 18
+floatBtn.BorderSizePixel = 0
+floatBtn.Draggable = true
+floatBtn.Parent = gui
+Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(1, 0)
+
+floatBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end
+local function addToggle(text, getter, setter)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 35)
+    row.BackgroundTransparency = 1
+    row.Parent = scroll
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -60, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 14
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.fromOffset(50, 26)
+    btn.Position = UDim2.new(1, -50, 0.5, -13)
+    btn.BackgroundColor3 = getter() and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(60, 60, 65)
+    btn.Text = getter() and "ON" or "OFF"
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+    btn.MouseButton1Click:Connect(function()
+        setter(not getter())
+        btn.Text = getter() and "ON" or "OFF"
+        btn.BackgroundColor3 = getter() and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(60, 60, 65)
+    end)
+end
+
+local function addSlider(text, min, max, getter, setter, isFloat)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 50)
+    row.BackgroundTransparency = 1
+    row.Parent = scroll
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 20)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text .. ": " .. tostring(getter())
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1, 0, 0, 8)
+    bar.Position = UDim2.new(0, 0, 0, 32)
+    bar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    bar.BorderSizePixel = 0
+    bar.Parent = row
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.fromScale((getter() - min) / (max - min), 1)
+    fill.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
+    fill.BorderSizePixel = 0
+    fill.Parent = bar
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = bar
+
+    local dragging = false
+    local function update(input)
+        local p = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        local v = min + (max - min) * p
+        if not isFloat then v = math.floor(v) else v = tonumber(string.format("%.3f", v)) end
+        setter(v)
+        fill.Size = UDim2.fromScale(p, 1)
+        lbl.Text = text .. ": " .. tostring(v)
+    end
+
+    btn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(i)
+        end
+    end)
+    track(uis.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            update(i)
+        end
+    end))
+    track(uis.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end))
+end
+
+local function addDropdown(text, options, getter, setter)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 50)
+    row.BackgroundTransparency = 1
+    row.Parent = scroll
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 20)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.Position = UDim2.new(0, 0, 0, 22)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    btn.Text = tostring(getter())
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+    local currentIndex = 1
+    for i, v in ipairs(options) do if v == getter() then currentIndex = i break end end
+
+    btn.MouseButton1Click:Connect(function()
+        currentIndex = currentIndex % #options + 1
+        setter(options[currentIndex])
+        btn.Text = tostring(options[currentIndex])
+    end)
+end
+
+
+addToggle("Enable Auto-Shoot", function() return getgenv().Config.Enabled end, function(v) getgenv().Config.Enabled = v end)
+addToggle("Anti-Explosion (Dodges Blast)", function() return getgenv().Config.AntiExplosion end, function(v) getgenv().Config.AntiExplosion = v end)
+addDropdown("Weapon Slot", {"Primary", "Secondary", "Melee"}, function() return getgenv().Config.WeaponSlot end, function(v) getgenv().Config.WeaponSlot = v end)
+addSlider("Fire Rate (seconds)", 0.00, 0.2, function() return getgenv().Config.FireRate end, function(v) getgenv().Config.FireRate = v end, true)
+addSlider("Max Distance", 50, 2000, function() return getgenv().Config.MaxDistance end, function(v) getgenv().Config.MaxDistance = v end, false)
+
+addToggle("Desync (Safe Shooting)", function() return getgenv().Config.DesyncEnabled end, function(v) getgenv().Config.DesyncEnabled = v end)
+addDropdown("Desync Mode", {"offscreen", "behind", "front", "above"}, function() return getgenv().Config.DesyncMode end, function(v) getgenv().Config.DesyncMode = v end)
+addSlider("Desync Height", 0, 10, function() return getgenv().Config.DesyncHeight end, function(v) getgenv().Config.DesyncHeight = v end, true)
+addSlider("Desync Back", -5, 10, function() return getgenv().Config.DesyncBack end, function(v) getgenv().Config.DesyncBack = v end, true)
+
+addToggle("Anti-Aim (Spin Server Hitbox)", function() return getgenv().Config.AntiAim end, function(v) getgenv().Config.AntiAim = v end)
+addSlider("Anti-Aim Speed", 100, 1000, function() return getgenv().Config.AntiAimSpeed end, function(v) getgenv().Config.AntiAimSpeed = v end, false)
+
+scroll.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y)
+
+getgenv().ZK_Unload = function()
+    if State.unloaded then return end
+    State.unloaded = true
+    for _, c in ipairs(State.connections) do pcall(function() c:Disconnect() end) end
+    State.connections = {}
+    if State.restoreConn then State.restoreConn:Disconnect() end
+    if gui then gui:Destroy() end
+end
+
+print("[ZK] Loaded! Anti-Aim is ON by default.")
