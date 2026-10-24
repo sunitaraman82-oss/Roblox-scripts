@@ -13,16 +13,13 @@ local util = require(ReplicatedStorage.Modules.Utility)
 local enum = require(ReplicatedStorage.Modules.EnumLibrary)
 local FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
 
-local CONFIG = {
-    MainBg = Color3.fromRGB(35, 20, 60),
-    PanelBg = Color3.fromRGB(50, 30, 80),
-    InputBg = Color3.fromRGB(25, 15, 45),
-    Border = Color3.fromRGB(160, 100, 255),
-    Pink = Color3.fromRGB(255, 50, 150),
-    Cyan = Color3.fromRGB(50, 200, 255),
-    Text = Color3.fromRGB(240, 240, 255),
-    Font = Enum.Font.FredokaOne,
-    FontBold = Enum.Font.FredokaOne
+-- Halloween Theme Colors
+local Colors = {
+    Bg = Color3.fromRGB(25, 15, 35),      -- Dark purple
+    Panel = Color3.fromRGB(40, 25, 55),   -- Slightly lighter purple
+    Element = Color3.fromRGB(60, 40, 80), -- Input backgrounds
+    Accent = Color3.fromRGB(255, 105, 180), -- Pink
+    Text = Color3.fromRGB(240, 240, 240)
 }
 
 getgenv().Config = {
@@ -88,6 +85,7 @@ RunService.Heartbeat:Connect(function()
     if not localFighter or not localFighter.EquippedItem then return end
     if tick() - lastFire < getgenv().Config.FireRate then return end
     lastFire = tick()
+    
     local originPos = targetHead.Position + Vector3.new(0, 1, 0)
     local targetPos = targetHead.Position
     local aimCF = CFrame.lookAt(originPos, targetPos)
@@ -95,6 +93,7 @@ RunService.Heartbeat:Connect(function()
     local randomOffset = Vector3.new((math.random() - 0.5) * 0.02, (math.random() - 0.5) * 0.02, (math.random() - 0.5) * 0.02)
     local aimedPos = targetPos + randomOffset
     local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+    
     local cameradata = {}
     cameradata[utf8.char(1)] = {
         [utf8.char(0)] = util:EncodeCFrame(aimCF),
@@ -147,27 +146,15 @@ local function Create(className, properties)
     return instance
 end
 
-local function AddFantasyStroke(parent)
-    local stroke = Create("UIStroke", { Color = CONFIG.Border, Thickness = 3, Parent = parent })
-    Create("UIGradient", { 
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, CONFIG.Pink),
-            ColorSequenceKeypoint.new(0.5, CONFIG.Border),
-            ColorSequenceKeypoint.new(1, CONFIG.Cyan)
-        }), 
-        Parent = stroke 
-    })
-end
 
 local ScreenGui = Create("ScreenGui", { Name = "HalloweenUI", ResetOnSpawn = false, Parent = PlayerGui })
-local ToggleBtn = Create("TextButton", { Size = UDim2.new(0, 100, 0, 40), Position = UDim2.new(0, 20, 0.5, -20), BackgroundColor3 = CONFIG.PanelBg, Text = "MENU", TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 18, Parent = ScreenGui })
-Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = ToggleBtn })
-AddFantasyStroke(ToggleBtn)
+local ToggleBtn = Create("TextButton", { Size = UDim2.new(0, 80, 0, 35), Position = UDim2.new(0, 20, 0.5, -17), BackgroundColor3 = Colors.Panel, Text = "MENU", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = 14, Parent = ScreenGui })
+Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = ToggleBtn })
+Create("UIStroke", { Color = Colors.Accent, Thickness = 1.5, Parent = ToggleBtn })
 
-local MainFrame = Create("Frame", { Name = "Main", Size = UDim2.new(0, 600, 0, 480), Position = UDim2.new(0.5, -300, 0.5, -240), BackgroundColor3 = CONFIG.MainBg, BorderSizePixel = 0, Parent = ScreenGui, ClipsDescendants = true, Visible = false })
-Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = MainFrame })
-AddFantasyStroke(MainFrame)
-Create("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(45, 25, 75), Color3.fromRGB(25, 15, 45)), Rotation = 90, Parent = MainFrame })
+local MainFrame = Create("Frame", { Name = "Main", Size = UDim2.new(0, 500, 0, 420), Position = UDim2.new(0.5, -250, 0.5, -210), BackgroundColor3 = Colors.Bg, BorderSizePixel = 0, Parent = ScreenGui, ClipsDescendants = true, Visible = false })
+Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = MainFrame })
+Create("UIStroke", { Color = Colors.Accent, Thickness = 1.5, Parent = MainFrame })
 
 local isMenuOpen = false
 local function closeMenu()
@@ -179,7 +166,7 @@ local function openMenu()
     isMenuOpen = true
     MainFrame.Visible = true
     MainFrame.Size = UDim2.new(0, 0, 0, 0)
-    TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 600, 0, 480) }):Play()
+    TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 500, 0, 420) }):Play()
 end
 ToggleBtn.MouseButton1Click:Connect(function() if isMenuOpen then closeMenu() else openMenu() end end)
 
@@ -198,64 +185,64 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
-local TopBar = Create("Frame", { Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1, Parent = MainFrame })
-Create("TextLabel", { Text = "Halloween Script | By Noami", Size = UDim2.new(1, -60, 1, 0), Position = UDim2.new(0, 20, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Left, Parent = TopBar })
-local CloseBtn = Create("TextButton", { Text = "X", Size = UDim2.new(0, 40, 0, 40), Position = UDim2.new(1, -50, 0.5, -20), BackgroundColor3 = CONFIG.Pink, TextColor3 = Color3.new(1,1,1), Font = CONFIG.FontBold, TextSize = 20, Parent = TopBar })
-Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = CloseBtn })
+local TopBar = Create("Frame", { Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1, Parent = MainFrame })
+Create("TextLabel", { Text = "Halloween Script | By Noami", Size = UDim2.new(1, -50, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, Parent = TopBar })
+local CloseBtn = Create("TextButton", { Text = "X", Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -40, 0.5, -15), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = 16, Parent = TopBar })
 CloseBtn.MouseButton1Click:Connect(closeMenu)
+Create("Frame", { Size = UDim2.new(1, -30, 0, 1), Position = UDim2.new(0, 15, 0, 45), BackgroundColor3 = Colors.Accent, BackgroundTransparency = 0.5, BorderSizePixel = 0, Parent = MainFrame })
 
-local ContentArea = Create("Frame", { Size = UDim2.new(1, -40, 1, -80), Position = UDim2.new(0, 20, 0, 65), BackgroundTransparency = 1, Parent = MainFrame })
-local LeftPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
-Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = LeftPanel })
-AddFantasyStroke(LeftPanel)
-Create("TextLabel", { Text = "⚔ Combat", Size = UDim2.new(1, -20, 0, 30), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, Parent = LeftPanel })
-local LeftScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -55), Position = UDim2.new(0, 10, 0, 45), BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = CONFIG.Border, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = LeftPanel })
-Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 15), Parent = LeftScroll })
+local ContentArea = Create("Frame", { Size = UDim2.new(1, -30, 1, -65), Position = UDim2.new(0, 15, 0, 55), BackgroundTransparency = 1, Parent = MainFrame })
+local LeftPanel = Create("Frame", { Size = UDim2.new(0.5, -8, 1, 0), BackgroundColor3 = Colors.Panel, Parent = ContentArea })
+Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = LeftPanel })
+Create("UIStroke", { Color = Colors.Accent, Thickness = 1, Transparency = 0.5, Parent = LeftPanel })
+Create("TextLabel", { Text = "Combat", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = LeftPanel })
+local LeftScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -40), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = LeftPanel })
+Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = LeftScroll })
 
-local RightPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), Position = UDim2.new(0.5, 10, 0, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
-Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = RightPanel })
-AddFantasyStroke(RightPanel)
-Create("TextLabel", { Text = "🎒 Items & Settings", Size = UDim2.new(1, -20, 0, 30), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
-local RightScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -55), Position = UDim2.new(0, 10, 0, 45), BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = CONFIG.Border, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = RightPanel })
-Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 15), Parent = RightScroll })
+local RightPanel = Create("Frame", { Size = UDim2.new(0.5, -8, 1, 0), Position = UDim2.new(0.5, 8, 0, 0), BackgroundColor3 = Colors.Panel, Parent = ContentArea })
+Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = RightPanel })
+Create("UIStroke", { Color = Colors.Accent, Thickness = 1, Transparency = 0.5, Parent = RightPanel })
+Create("TextLabel", { Text = "Items & Settings", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
+local RightScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -40), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = RightPanel })
+Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = RightScroll })
 
 local function CreateHeader(text, parent)
-    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Parent = parent })
-    Create("TextLabel", { Text = text, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Cyan, Font = CONFIG.FontBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = text, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 end
 
 local function CreateToggle(name, featureKey, parent)
     local isChecked = getgenv().Config[featureKey]
-    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Parent = parent })
-    Create("TextLabel", { Text = name, Size = UDim2.new(0.75, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
-    local Pill = Create("Frame", { Size = UDim2.new(0, 44, 0, 22), Position = UDim2.new(1, -44, 0.5, -11), BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg, Parent = frame })
-    Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Pill })
-    AddFantasyStroke(Pill)
-    local Knob = Create("Frame", { Size = UDim2.new(0, 16, 0, 16), Position = isChecked and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8), BackgroundColor3 = Color3.fromRGB(255,255,255), Parent = Pill })
-    Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Knob })
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = name, Size = UDim2.new(0.75, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    
+    local Pill = Create("Frame", { Size = UDim2.new(0, 34, 0, 16), Position = UDim2.new(1, -34, 0.5, -8), BackgroundColor3 = isChecked and Colors.Accent or Colors.Element, Parent = frame })
+    Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = Pill })
+    local Knob = Create("Frame", { Size = UDim2.new(0, 12, 0, 12), Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = Color3.fromRGB(255,255,255), Parent = Pill })
+    Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Knob })
+    
     local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = frame })
     Btn.MouseButton1Click:Connect(function()
         isChecked = not isChecked
         getgenv().Config[featureKey] = isChecked
-        TweenService:Create(Pill, TweenInfo.new(0.2), { BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg }):Play()
-        TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Quart), { Position = isChecked and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8) }):Play()
+        TweenService:Create(Pill, TweenInfo.new(0.2), { BackgroundColor3 = isChecked and Colors.Accent or Colors.Element }):Play()
+        TweenService:Create(Knob, TweenInfo.new(0.2), { Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6) }):Play()
     end)
 end
 
 local function CreateSlider(name, min, max, default, parent, callback)
-    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Parent = parent })
-    local Top = Create("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Parent = frame })
-    Create("TextLabel", { Text = name, Size = UDim2.new(0.7, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = Top })
-    local ValLabel = Create("TextLabel", { Text = tostring(default), Size = UDim2.new(0.3, 0, 1, 0), Position = UDim2.new(0.7, 0, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Right, Parent = Top })
-    local Bar = Create("Frame", { Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 0, 24), BackgroundColor3 = CONFIG.InputBg, Parent = frame })
-    Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Bar })
-    AddFantasyStroke(Bar)
-    local Fill = Create("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = CONFIG.Pink, Parent = Bar })
-    Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Fill })
-    Create("UIGradient", { Color = ColorSequence.new(CONFIG.Pink, CONFIG.Border), Parent = Fill })
-    local Knob = Create("Frame", { Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8), BackgroundColor3 = CONFIG.Border, Parent = Bar })
-    Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = Knob })
-    AddFantasyStroke(Knob)
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Parent = parent })
+    local Top = Create("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Parent = frame })
+    Create("TextLabel", { Text = name, Size = UDim2.new(0.7, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Top })
+    local ValLabel = Create("TextLabel", { Text = tostring(default), Size = UDim2.new(0.3, 0, 1, 0), Position = UDim2.new(0.7, 0, 0, 0), BackgroundTransparency = 1, TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right, Parent = Top })
+    
+    local Bar = Create("Frame", { Size = UDim2.new(1, 0, 0, 6), Position = UDim2.new(0, 0, 0, 22), BackgroundColor3 = Colors.Element, Parent = frame })
+    Create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = Bar })
+    local Fill = Create("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Colors.Accent, Parent = Bar })
+    Create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = Fill })
+    local Knob = Create("Frame", { Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6), BackgroundColor3 = Colors.Accent, Parent = Bar })
+    Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Knob })
+    
     local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = Bar })
     local dragging = false
     local function update(input)
@@ -263,7 +250,7 @@ local function CreateSlider(name, min, max, default, parent, callback)
         local val = math.floor(min + (max - min) * percent)
         if max <= 1 or (max - min) < 10 then val = math.round((min + (max - min) * percent) * 100) / 100 end
         TweenService:Create(Fill, TweenInfo.new(0.05), { Size = UDim2.new(percent, 0, 1, 0) }):Play()
-        TweenService:Create(Knob, TweenInfo.new(0.05), { Position = UDim2.new(percent, -8, 0.5, -8) }):Play()
+        TweenService:Create(Knob, TweenInfo.new(0.05), { Position = UDim2.new(percent, -6, 0.5, -6) }):Play()
         ValLabel.Text = tostring(val)
         if callback then callback(val) end
     end
@@ -273,13 +260,14 @@ local function CreateSlider(name, min, max, default, parent, callback)
 end
 
 local function CreateDropdown(name, options, default, parent, callback)
-    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1, Parent = parent })
-    Create("TextLabel", { Text = name, Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
-    local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 26), Position = UDim2.new(0, 0, 0, 22), BackgroundColor3 = CONFIG.InputBg, Text = "", Parent = frame })
-    Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Btn })
-    AddFantasyStroke(Btn)
-    local Label = Create("TextLabel", { Text = default, Size = UDim2.new(1, -25, 1, 0), Position = UDim2.new(0, 8, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = Btn })
-    Create("TextLabel", { Text = "▼", Size = UDim2.new(0, 25, 1, 0), Position = UDim2.new(1, -25, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 12, Parent = Btn })
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = name, Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    
+    local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0, 18), BackgroundColor3 = Colors.Element, Text = "", Parent = frame })
+    Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Btn })
+    local Label = Create("TextLabel", { Text = default, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Btn })
+    Create("TextLabel", { Text = "v", Size = UDim2.new(0, 20, 1, 0), Position = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = 12, Parent = Btn })
+    
     local currentIndex = 1
     for i, v in ipairs(options) do if v == default then currentIndex = i break end end
     Btn.MouseButton1Click:Connect(function()
@@ -302,9 +290,8 @@ CreateToggle("Ammo Packs", "CollectAmmo", RightScroll)
 CreateSlider("Collect Rate", 0.05, 1, getgenv().Config.CollectInterval, RightScroll, function(val) getgenv().Config.CollectInterval = val end)
 
 CreateHeader("SETTINGS", RightScroll)
-local UnloadBtn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = Color3.fromRGB(200, 40, 40), Text = "UNLOAD UI", TextColor3 = Color3.new(1,1,1), Font = CONFIG.FontBold, TextSize = 15, Parent = RightScroll })
-Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = UnloadBtn })
-AddFantasyStroke(UnloadBtn)
+local UnloadBtn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Colors.Element, Text = "Unload GUI", TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = 12, Parent = RightScroll })
+Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = UnloadBtn })
 UnloadBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
 
 LeftScroll.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() LeftScroll.CanvasSize = UDim2.new(0, 0, 0, LeftScroll.UIListLayout.AbsoluteContentSize.Y + 20) end)
