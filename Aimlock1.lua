@@ -29,17 +29,11 @@ getgenv().Config = {
     AZ_FireRate = 0.05, SA_FireRate = 0.0005, Rage_FireRate = 0.001, MaxDistance = 1000,
     WeaponSlot = "Primary", Hitpart = "Head",
     DesyncFeatures = true, DesyncMode = "offscreen", DesyncHeight = 1.0, DesyncBack = 2.0,
-    AntiExplosion = true, AntiExplosionHeight = 300, AntiAim = true, AntiAimSpeed = 360,
-    -- Movement Config
-    WalkSpeed = { Enabled = false, Speed = 2 },
-    Sliding = { Enabled = false, Speed = 10 },
-    JumpPower = { Enabled = false, Speed = 2 },
-    Fly = { Enabled = false, Speed = 100 },
-    Noclip = { Enabled = false }
+    AntiExplosion = true, AntiExplosionHeight = 300, AntiAim = true, AntiAimSpeed = 360
 }
 
 local slots = { Primary = 1, Secondary = 2, Melee = 3 }
-local State = { AZ_lastFire = 0, SA_lastFire = 0, Rage_lastFire = 0, AZ_lastEquip = 0, target = nil, restoreConn = nil, flyConn = nil, flyGyro = nil, flyPos = nil }
+local State = { AZ_lastFire = 0, SA_lastFire = 0, Rage_lastFire = 0, AZ_lastEquip = 0, target = nil, restoreConn = nil }
 local currentlyDodging = false
 
 lplr.CharacterAdded:Connect(function()
@@ -47,7 +41,6 @@ lplr.CharacterAdded:Connect(function()
     if RespawnRemote then pcall(function() RespawnRemote:FireServer() end) end
 end)
 
--- Anti-Zombie Auto Equip Loop
 task.spawn(function()
     while true do
         task.wait(0.5)
@@ -56,65 +49,6 @@ task.spawn(function()
         State.AZ_lastEquip = tick()
         local lf = FighterController.LocalFighter
         if lf and not lf.EquippedItem then pcall(function() lf:EquipItem(slots[getgenv().Config.WeaponSlot] or 1) end) end
-    end
-end)
-
--- Movement Logic (Walk Speed, Jump, Noclip, Fly)
-RunService.Heartbeat:Connect(function()
-    local char = lplr.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChild("Humanoid")
-    if not hrp or not hum then return end
-
-    -- Walk Speed
-    if getgenv().Config.WalkSpeed.Enabled then
-        hum.WalkSpeed = 16 * getgenv().Config.WalkSpeed.Speed
-    else
-        hum.WalkSpeed = 16
-    end
-
-    -- Jump Power
-    if getgenv().Config.JumpPower.Enabled then
-        hum.UseJumpPower = true
-        hum.JumpPower = 50 * getgenv().Config.JumpPower.Speed
-    else
-        hum.UseJumpPower = false
-    end
-
-    -- Sliding (Boosts speed if walking and holding Ctrl/C)
-    if getgenv().Config.Sliding.Enabled and getgenv().Config.WalkSpeed.Enabled then
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then
-            hum.WalkSpeed = 16 * getgenv().Config.Sliding.Speed
-        end
-    end
-
-    -- Noclip
-    if getgenv().Config.Noclip.Enabled then
-        for _, v in pairs(char:GetDescendants()) do
-            if v:IsA("BasePart") and v.CanCollide then
-                v.CanCollide = false
-            end
-        end
-    end
-
-    -- Fly
-    if getgenv().Config.Fly.Enabled then
-        if not State.flyGyro then
-            State.flyGyro = Instance.new("BodyGyro", hrp)
-            State.flyGyro.P = 9e4
-            State.flyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-            State.flyGyro.cframe = hrp.CFrame
-            State.flyPos = Instance.new("BodyPosition", hrp)
-            State.flyPos.maxForce = Vector3.new(9e9, 9e9, 9e9)
-            State.flyPos.position = hrp.Position
-        end
-        
-        if State.flyGyro then State.flyGyro.cframe = workspace.CurrentCamera.CFrame end
-        if State.flyPos then State.flyPos.position = State.flyPos.position + (hum.MoveDirection * getgenv().Config.Fly.Speed) end
-    else
-        if State.flyGyro then State.flyGyro:Destroy(); State.flyGyro = nil end
-        if State.flyPos then State.flyPos:Destroy(); State.flyPos = nil end
     end
 end)
 
@@ -147,7 +81,6 @@ local function getClosestTarget()
     return closest
 end
 
--- LOGIC 1: ANTI-ZOMBIE
 RunService.Heartbeat:Connect(function()
     if not getgenv().Config.AntiZombie then return end
     local target = getClosestTarget()
@@ -157,7 +90,8 @@ RunService.Heartbeat:Connect(function()
     if tick() - State.AZ_lastFire < getgenv().Config.AZ_FireRate then return end
     State.AZ_lastFire = tick()
 
-    local originPos = target.Head.Position + Vector3.new(0, 1, 0)
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+    local originPos = myRoot and myRoot.Position or target.Root.Position
     local aimCF = CFrame.lookAt(originPos, target.Head.Position)
     local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
     local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
@@ -165,7 +99,6 @@ RunService.Heartbeat:Connect(function()
     pcall(function() UseItemRemote:FireServer(lf.EquippedItem:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
 end)
 
--- LOGIC 2: SILENT AIM
 RunService.Heartbeat:Connect(function()
     if not getgenv().Config.SilentAim then return end
     local target = getClosestTarget()
@@ -176,17 +109,8 @@ RunService.Heartbeat:Connect(function()
     State.SA_lastFire = tick()
 
     local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
-    if myRoot then
-        local desyncCF = CFrame.lookAt((target.Root.CFrame * CFrame.new(0, 1, 2)).Position, target.Head.Position)
-        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
-        myRoot.CFrame = desyncCF
-        RunService:BindToRenderStep("__restoreSA", 101, function()
-            if myRoot then myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel end
-            RunService:UnbindFromRenderStep("__restoreSA")
-        end)
-    end
-
-    local originPos = myRoot and myRoot.CFrame.Position or target.Root.Position
+    local originPos = myRoot and myRoot.Position or target.Root.Position
+    
     local aimCF = CFrame.lookAt(originPos, target.Head.Position)
     local rand = Vector3.new((math.random()-0.5)*0.1, (math.random()-0.5)*0.1, (math.random()-0.5)*0.1)
     local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
@@ -194,7 +118,6 @@ RunService.Heartbeat:Connect(function()
     pcall(function() UseItemRemote:FireServer(lf.EquippedItem:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
 end)
 
--- LOGIC 3: RAGE & DESYNC
 local function computeDesyncCFrame(target, myRoot)
     local cfg = getgenv().Config
     local offset
@@ -242,11 +165,12 @@ RunService.Heartbeat:Connect(function()
     if not myRoot then return end
     local cfg = getgenv().Config
     local originPos = myRoot.Position
+    local oldCF, oldVel, oldRotVel
 
     if cfg.DesyncFeatures then
         local desyncCF = computeDesyncCFrame(newTarget, myRoot)
         originPos = desyncCF.Position
-        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
+        oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
         myRoot.CFrame = desyncCF
         if State.restoreConn then State.restoreConn:Disconnect() end
         State.restoreConn = RunService.RenderStepped:Connect(function()
@@ -335,7 +259,7 @@ Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.
 
 local RightPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), Position = UDim2.new(0.5, 10, 0, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
 AddCorner(RightPanel, 8); AddStroke(RightPanel, CONFIG.Pink, 1, 0.7)
-Create("TextLabel", { Text = "Movement & Desync", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
+Create("TextLabel", { Text = "Rage & Desync", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
 local RightScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Pink, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = RightPanel })
 Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 12), Parent = RightScroll })
 
@@ -344,9 +268,8 @@ local function CreateHeader(text, parent)
     Create("TextLabel", { Text = text, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.DimText, Font = CONFIG.FontBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 end
 
-local function CreateToggle(name, featureKey, parent, callback)
+local function CreateToggle(name, featureKey, parent)
     local isChecked = getgenv().Config[featureKey]
-    if type(isChecked) == "table" then isChecked = isChecked.Enabled end
     local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = parent })
     Create("TextLabel", { Text = name, Size = UDim2.new(0.75, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
     local Pill = Create("Frame", { Size = UDim2.new(0, 34, 0, 16), Position = UDim2.new(1, -34, 0.5, -8), BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg, Parent = frame })
@@ -357,14 +280,9 @@ local function CreateToggle(name, featureKey, parent, callback)
     local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = frame })
     Btn.MouseButton1Click:Connect(function()
         isChecked = not isChecked
-        if type(getgenv().Config[featureKey]) == "table" then
-            getgenv().Config[featureKey].Enabled = isChecked
-        else
-            getgenv().Config[featureKey] = isChecked
-        end
+        getgenv().Config[featureKey] = isChecked
         TweenService:Create(Pill, TweenInfo.new(0.2), { BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg }):Play()
         TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Quart), { Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6) }):Play()
-        if callback then callback(isChecked) end
     end)
 end
 
@@ -412,12 +330,12 @@ local function CreateDropdown(name, options, default, parent, callback)
 end
 
 -- POPULATE LEFT PANEL (Anti-Zombie & Silent Aim)
-CreateHeader("Anti Zombie (antizombie.txt)", LeftScroll)
+CreateHeader("Anti Zombie", LeftScroll)
 CreateToggle("Anti Zombie Enabled", "AntiZombie", LeftScroll)
 CreateDropdown("Weapon Slot", {"Primary", "Secondary", "Melee"}, getgenv().Config.WeaponSlot, LeftScroll, function(val) getgenv().Config.WeaponSlot = val end)
 CreateSlider("Anti-Zombie Fire Rate", 0.01, 0.5, getgenv().Config.AZ_FireRate, LeftScroll, function(val) getgenv().Config.AZ_FireRate = val end)
 
-CreateHeader("Silent Aim (Ahhzb.txt)", LeftScroll)
+CreateHeader("Silent Aim", LeftScroll)
 CreateToggle("Silent Aim Enabled", "SilentAim", LeftScroll)
 CreateSlider("Silent Aim Fire Rate", 0.001, 0.5, getgenv().Config.SA_FireRate, LeftScroll, function(val) getgenv().Config.SA_FireRate = val end)
 
@@ -426,19 +344,8 @@ CreateSlider("Max Distance", 50, 2000, getgenv().Config.MaxDistance, LeftScroll,
 CreateDropdown("Hitpart", {"Head", "Torso", "Random"}, getgenv().Config.Hitpart, LeftScroll, function(val) getgenv().Config.Hitpart = val end)
 
 
--- POPULATE RIGHT PANEL (Rage & Desync & Movement)
-CreateHeader("Movement", RightScroll)
-CreateToggle("Walk Speed Enabled", "WalkSpeed", RightScroll)
-CreateSlider("Walk Speed Multiplier", 1, 10, 2, RightScroll, function(val) getgenv().Config.WalkSpeed.Speed = val end)
-CreateToggle("Sliding Enabled", "Sliding", RightScroll)
-CreateSlider("Sliding Multiplier", 1, 10, 10, RightScroll, function(val) getgenv().Config.Sliding.Speed = val end)
-CreateToggle("Jump Power Enabled", "JumpPower", RightScroll)
-CreateSlider("Jump Power Multiplier", 1, 10, 2, RightScroll, function(val) getgenv().Config.JumpPower.Speed = val end)
-CreateToggle("Fly Enabled", "Fly", RightScroll)
-CreateSlider("Fly Speed", 10, 500, 100, RightScroll, function(val) getgenv().Config.Fly.Speed = val end)
-CreateToggle("Noclip Enabled", "Noclip", RightScroll)
-
-CreateHeader("Rage Features (zombi.txt)", RightScroll)
+-- POPULATE RIGHT PANEL (Rage & Desync)
+CreateHeader("Rage Features", RightScroll)
 CreateToggle("Rage Enabled", "Rage", RightScroll)
 CreateToggle("Void Spam", "VoidSpam", RightScroll)
 CreateSlider("Rage Fire Rate", 0.001, 0.5, getgenv().Config.Rage_FireRate, RightScroll, function(val) getgenv().Config.Rage_FireRate = val end)
