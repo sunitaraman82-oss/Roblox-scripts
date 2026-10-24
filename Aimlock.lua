@@ -18,27 +18,21 @@ pcall(function()
 end)
 
 local CONFIG = {
-    MainBg = Color3.fromRGB(12, 10, 14),          
-    PanelBg = Color3.fromRGB(20, 15, 24),         
-    InputBg = Color3.fromRGB(35, 25, 40),         
-    Pink = Color3.fromRGB(255, 105, 180),         
-    Text = Color3.fromRGB(230, 230, 230),         
-    DimText = Color3.fromRGB(150, 150, 150),      
-    Font = Enum.Font.GothamMedium,
-    FontBold = Enum.Font.GothamBold,
-    Blossom = "rbxassetid://1316045217"           
+    MainBg = Color3.fromRGB(12, 10, 14), PanelBg = Color3.fromRGB(20, 15, 24), InputBg = Color3.fromRGB(35, 25, 40),
+    Pink = Color3.fromRGB(255, 105, 180), Text = Color3.fromRGB(230, 230, 230), DimText = Color3.fromRGB(150, 150, 150),
+    Font = Enum.Font.GothamMedium, FontBold = Enum.Font.GothamBold, Blossom = "rbxassetid://1316045217"
 }
 
 getgenv().Config = {
     AntiZombie = true, SilentAim = true, Rage = true, VoidSpam = false,
-    FireRate = 0.001, MaxDistance = 1000, Hitpart = "Head",
+    AZ_FireRate = 0.05, SA_FireRate = 0.0005, Rage_FireRate = 0.001, MaxDistance = 1000,
+    WeaponSlot = "Primary", Hitpart = "Head",
     DesyncFeatures = true, DesyncMode = "offscreen", DesyncHeight = 1.0, DesyncBack = 2.0,
-    AntiExplosion = true, AntiExplosionHeight = 300, AntiAim = true, AntiAimSpeed = 360,
-    WeaponSlot = "Primary"
+    AntiExplosion = true, AntiExplosionHeight = 300, AntiAim = true, AntiAimSpeed = 360
 }
 
 local slots = { Primary = 1, Secondary = 2, Melee = 3 }
-local State = { lastFire = 0, lastEquip = 0, target = nil, restoreConn = nil }
+local State = { AZ_lastFire = 0, SA_lastFire = 0, Rage_lastFire = 0, AZ_lastEquip = 0, target = nil, restoreConn = nil }
 local currentlyDodging = false
 
 lplr.CharacterAdded:Connect(function()
@@ -50,12 +44,10 @@ task.spawn(function()
     while true do
         task.wait(0.5)
         if not getgenv().Config.AntiZombie or not FighterController then continue end
-        if tick() - State.lastEquip < 0.5 then continue end
-        State.lastEquip = tick()
+        if tick() - State.AZ_lastEquip < 0.5 then continue end
+        State.AZ_lastEquip = tick()
         local lf = FighterController.LocalFighter
-        if lf and not lf.EquippedItem then
-            pcall(function() lf:EquipItem(slots[getgenv().Config.WeaponSlot] or 1) end)
-        end
+        if lf and not lf.EquippedItem then pcall(function() lf:EquipItem(slots[getgenv().Config.WeaponSlot] or 1) end) end
     end
 end)
 
@@ -76,12 +68,8 @@ local function getClosestTarget()
                     local d = (myPos - root.Position).Magnitude
                     if d < closestDist then
                         local targetPart = head
-                        if getgenv().Config.Hitpart == "Torso" then
-                            targetPart = obj:FindFirstChild("UpperTorso") or obj:FindFirstChild("Torso") or head
-                        elseif getgenv().Config.Hitpart == "Random" then
-                            local parts = {"Head", "UpperTorso", "LowerTorso", "Torso"}
-                            targetPart = obj:FindFirstChild(parts[math.random(#parts)]) or head
-                        end
+                        if getgenv().Config.Hitpart == "Torso" then targetPart = obj:FindFirstChild("UpperTorso") or obj:FindFirstChild("Torso") or head
+                        elseif getgenv().Config.Hitpart == "Random" then targetPart = obj:FindFirstChild(({"Head", "UpperTorso", "LowerTorso", "Torso"})[math.random(4)]) or head end
                         closestDist = d
                         closest = { Model = obj, Root = root, Head = targetPart, Hum = hum, Distance = d }
                     end
@@ -92,29 +80,104 @@ local function getClosestTarget()
     return closest
 end
 
+RunService.Heartbeat:Connect(function()
+    if not getgenv().Config.AntiZombie then return end
+    local target = getClosestTarget()
+    if not target then return end
+    local lf = FighterController.LocalFighter
+    if not lf or not lf.EquippedItem then return end
+    if tick() - State.AZ_lastFire < getgenv().Config.AZ_FireRate then return end
+    State.AZ_lastFire = tick()
+
+    local originPos = target.Head.Position + Vector3.new(0, 1, 0)
+    local aimCF = CFrame.lookAt(originPos, target.Head.Position)
+    local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
+    local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
+    local cameraData = { [utf8.char(1)] = { [utf8.char(0)] = util:EncodeCFrame(aimCF), [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame), [utf8.char(2)] = target.Head, [utf8.char(3)] = util:EncodeCFrame(objSpaceHead) } }
+    pcall(function() UseItemRemote:FireServer(lf.EquippedItem:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not getgenv().Config.SilentAim then return end
+    local target = getClosestTarget()
+    if not target then return end
+    local lf = FighterController.LocalFighter
+    if not lf or not lf.EquippedItem then return end
+    if tick() - State.SA_lastFire < getgenv().Config.SA_FireRate then return end
+    State.SA_lastFire = tick()
+
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot then
+        local desyncCF = CFrame.lookAt((target.Root.CFrame * CFrame.new(0, 1, 2)).Position, target.Head.Position)
+        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
+        myRoot.CFrame = desyncCF
+        RunService:BindToRenderStep("__restoreSA", 101, function()
+            if myRoot then myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel end
+            RunService:UnbindFromRenderStep("__restoreSA")
+        end)
+    end
+
+    local originPos = myRoot and myRoot.CFrame.Position or target.Root.Position
+    local aimCF = CFrame.lookAt(originPos, target.Head.Position)
+    local rand = Vector3.new((math.random()-0.5)*0.1, (math.random()-0.5)*0.1, (math.random()-0.5)*0.1)
+    local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
+    local cameraData = { [utf8.char(1)] = { [utf8.char(0)] = util:EncodeCFrame(aimCF), [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame), [utf8.char(2)] = target.Head, [utf8.char(3)] = util:EncodeCFrame(objSpaceHead) } }
+    pcall(function() UseItemRemote:FireServer(lf.EquippedItem:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
+end)
+
 local function computeDesyncCFrame(target, myRoot)
-    local root, head = target.Root, target.Head
     local cfg = getgenv().Config
     local offset
-    if cfg.DesyncMode == "offscreen" then return CFrame.lookAt(root.Position + Vector3.new(0, 1000, 0), head.Position)
+    if cfg.DesyncMode == "offscreen" then return CFrame.lookAt(target.Root.Position + Vector3.new(0, 1000, 0), target.Head.Position)
     elseif cfg.DesyncMode == "behind" then offset = CFrame.new(0, cfg.DesyncHeight, cfg.DesyncBack)
     elseif cfg.DesyncMode == "front" then offset = CFrame.new(0, cfg.DesyncHeight, -cfg.DesyncBack)
     else offset = CFrame.new(0, cfg.DesyncHeight + 2, 0) end
-    return CFrame.lookAt((root.CFrame * offset).Position, head.Position)
+    return CFrame.lookAt((target.Root.CFrame * offset).Position, target.Head.Position)
 end
 
-local function fireWeapon(item, target)
-    local char = lplr.Character
-    if not char then return end
-    local myRoot = char:FindFirstChild("HumanoidRootPart")
+local function dodgeExplosion()
+    if currentlyDodging or not getgenv().Config.AntiExplosion then return end
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    currentlyDodging = true
+    local originalCF = myRoot.CFrame
+    myRoot.CFrame = originalCF + Vector3.new(0, getgenv().Config.AntiExplosionHeight, 0)
+    task.delay(0.15, function() if myRoot and myRoot.Parent then myRoot.CFrame = originalCF end; currentlyDodging = false end)
+end
+
+local function doVoidSpam(target)
+    if not getgenv().Config.VoidSpam then return end
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot and target and target.Root then pcall(function() target.Root.CFrame = target.Root.CFrame + Vector3.new(0, 1000, 0) end) end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not getgenv().Config.Rage then return end
+    local target = State.target
+    if target and target.Model and target.Model.Parent and target.Hum then
+        if target.Hum.Health > 0 and target.Hum.Health < (target.Hum.MaxHealth * 0.15) then dodgeExplosion() end
+    end
+
+    local lf = FighterController.LocalFighter
+    if not lf or not lf.EquippedItem then return end
+    local newTarget = getClosestTarget()
+    State.target = newTarget
+    if not newTarget then return end
+    if tick() - State.Rage_lastFire < getgenv().Config.Rage_FireRate then return end
+    State.Rage_lastFire = tick()
+
+    if getgenv().Config.VoidSpam then doVoidSpam(newTarget) return end
+
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
     local cfg = getgenv().Config
-    local originPos, aimPos = myRoot.Position, target.Head.Position
+    local originPos = myRoot.Position
+    local oldCF, oldVel, oldRotVel
 
     if cfg.DesyncFeatures then
-        local desyncCF = computeDesyncCFrame(target, myRoot)
+        local desyncCF = computeDesyncCFrame(newTarget, myRoot)
         originPos = desyncCF.Position
-        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
+        oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
         myRoot.CFrame = desyncCF
         if State.restoreConn then State.restoreConn:Disconnect() end
         State.restoreConn = RunService.RenderStepped:Connect(function()
@@ -133,52 +196,11 @@ local function fireWeapon(item, target)
         end)
     end
 
-    local aimCF = CFrame.lookAt(originPos, aimPos)
+    local aimCF = CFrame.lookAt(originPos, newTarget.Head.Position)
     local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
-    local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(aimPos + rand))
-    local cameraData = { [utf8.char(1)] = { [utf8.char(0)] = util:EncodeCFrame(aimCF), [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame), [utf8.char(2)] = target.Head, [utf8.char(3)] = util:EncodeCFrame(objSpaceHead) } }
-    
-    pcall(function() UseItemRemote:FireServer(item:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
-end
-
-local function dodgeExplosion()
-    if currentlyDodging or not getgenv().Config.AntiExplosion then return end
-    local char = lplr.Character
-    if not char then return end
-    local myRoot = char:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
-    currentlyDodging = true
-    local originalCF = myRoot.CFrame
-    myRoot.CFrame = originalCF + Vector3.new(0, getgenv().Config.AntiExplosionHeight, 0)
-    task.delay(0.15, function()
-        if myRoot and myRoot.Parent then myRoot.CFrame = originalCF end
-        currentlyDodging = false
-    end)
-end
-
-local function doVoidSpam(target)
-    if not getgenv().Config.VoidSpam then return end
-    local char = lplr.Character
-    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
-    if myRoot and target and target.Root then
-        pcall(function() target.Root.CFrame = target.Root.CFrame + Vector3.new(0, 1000, 0) end)
-    end
-end
-
-RunService.Heartbeat:Connect(function()
-    if not getgenv().Config.SilentAim or not util or not enum or not FighterController then return end
-    local target = State.target
-    if target and target.Model and target.Model.Parent and target.Hum then
-        if target.Hum.Health > 0 and target.Hum.Health < (target.Hum.MaxHealth * 0.15) then dodgeExplosion() end
-    end
-    local lf = FighterController.LocalFighter
-    if not lf or not lf.EquippedItem then return end
-    local newTarget = getClosestTarget()
-    State.target = newTarget
-    if not newTarget then return end
-    if tick() - State.lastFire < getgenv().Config.FireRate then return end
-    State.lastFire = tick()
-    if getgenv().Config.VoidSpam then doVoidSpam(newTarget) else fireWeapon(lf.EquippedItem, newTarget) end
+    local objSpaceHead = newTarget.Head.CFrame:ToObjectSpace(CFrame.new(newTarget.Head.Position + rand))
+    local cameraData = { [utf8.char(1)] = { [utf8.char(0)] = util:EncodeCFrame(aimCF), [utf8.char(1)] = util:EncodeCFrame(newTarget.Head.CFrame), [utf8.char(2)] = newTarget.Head, [utf8.char(3)] = util:EncodeCFrame(objSpaceHead) } }
+    pcall(function() UseItemRemote:FireServer(lf.EquippedItem:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
 end)
 
 local function Create(className, properties)
@@ -186,7 +208,6 @@ local function Create(className, properties)
     for k, v in pairs(properties) do instance[k] = v end
     return instance
 end
-
 local function AddCorner(parent, radius) Create("UICorner", { CornerRadius = UDim.new(0, radius or 8), Parent = parent }) end
 local function AddStroke(parent, color, thickness, transparency) return Create("UIStroke", { Color = color or CONFIG.Pink, Thickness = thickness or 1, Transparency = transparency or 0, Parent = parent }) end
 
@@ -245,7 +266,7 @@ Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.
 
 local RightPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), Position = UDim2.new(0.5, 10, 0, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
 AddCorner(RightPanel, 8); AddStroke(RightPanel, CONFIG.Pink, 1, 0.7)
-Create("TextLabel", { Text = "Desync & Exploits", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
+Create("TextLabel", { Text = "Rage & Desync", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
 local RightScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Pink, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = RightPanel })
 Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 12), Parent = RightScroll })
 
@@ -254,7 +275,7 @@ local function CreateHeader(text, parent)
     Create("TextLabel", { Text = text, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.DimText, Font = CONFIG.FontBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
 end
 
-local function CreateToggle(name, featureKey, parent, callback)
+local function CreateToggle(name, featureKey, parent)
     local isChecked = getgenv().Config[featureKey]
     local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = parent })
     Create("TextLabel", { Text = name, Size = UDim2.new(0.75, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
@@ -269,7 +290,6 @@ local function CreateToggle(name, featureKey, parent, callback)
         getgenv().Config[featureKey] = isChecked
         TweenService:Create(Pill, TweenInfo.new(0.2), { BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg }):Play()
         TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Quart), { Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6) }):Play()
-        if callback then callback(isChecked) end
     end)
 end
 
@@ -305,7 +325,7 @@ local function CreateDropdown(name, options, default, parent, callback)
     Create("TextLabel", { Text = name, Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
     local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0, 18), BackgroundColor3 = CONFIG.InputBg, Text = "", Parent = frame })
     AddCorner(Btn, 4); AddStroke(Btn, CONFIG.Pink, 1, 0.5)
-        local Label = Create("TextLabel", { Text = default, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Btn })
+    local Label = Create("TextLabel", { Text = default, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Btn })
     Create("TextLabel", { Text = "▼", Size = UDim2.new(0, 20, 1, 0), Position = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 10, Parent = Btn })
     local currentIndex = 1
     for i, v in ipairs(options) do if v == default then currentIndex = i break end end
@@ -316,21 +336,25 @@ local function CreateDropdown(name, options, default, parent, callback)
     end)
 end
 
-CreateHeader("Anti Zombie", LeftScroll)
-CreateToggle("Anti Zombie (Auto Equip)", "AntiZombie", LeftScroll)
-CreateDropdown("Equip Slot", {"Primary", "Secondary", "Melee"}, getgenv().Config.WeaponSlot, LeftScroll, function(val) getgenv().Config.WeaponSlot = val end)
+CreateHeader("Anti Zombie (antizombie.txt)", LeftScroll)
+CreateToggle("Anti Zombie Enabled", "AntiZombie", LeftScroll)
+CreateDropdown("Weapon Slot", {"Primary", "Secondary", "Melee"}, getgenv().Config.WeaponSlot, LeftScroll, function(val) getgenv().Config.WeaponSlot = val end)
+CreateSlider("Anti-Zombie Fire Rate", 0.01, 0.5, getgenv().Config.AZ_FireRate, LeftScroll, function(val) getgenv().Config.AZ_FireRate = val end)
 
-CreateHeader("Silent Aim", LeftScroll)
+CreateHeader("Silent Aim (Ahhzb.txt)", LeftScroll)
 CreateToggle("Silent Aim Enabled", "SilentAim", LeftScroll)
-CreateSlider("Fire Rate", 0.001, 0.5, getgenv().Config.FireRate, LeftScroll, function(val) getgenv().Config.FireRate = val end)
+CreateSlider("Silent Aim Fire Rate", 0.001, 0.5, getgenv().Config.SA_FireRate, LeftScroll, function(val) getgenv().Config.SA_FireRate = val end)
+
+CreateHeader("Global Settings", LeftScroll)
 CreateSlider("Max Distance", 50, 2000, getgenv().Config.MaxDistance, LeftScroll, function(val) getgenv().Config.MaxDistance = val end)
 CreateDropdown("Hitpart", {"Head", "Torso", "Random"}, getgenv().Config.Hitpart, LeftScroll, function(val) getgenv().Config.Hitpart = val end)
 
-CreateHeader("Other Combat", LeftScroll)
-CreateToggle("Rage", "Rage", LeftScroll)
-CreateToggle("Void Spam (Insta-Kill)", "VoidSpam", LeftScroll)
+CreateHeader("Rage Features (zombi.txt)", RightScroll)
+CreateToggle("Rage Enabled", "Rage", RightScroll)
+CreateToggle("Void Spam", "VoidSpam", RightScroll)
+CreateSlider("Rage Fire Rate", 0.001, 0.5, getgenv().Config.Rage_FireRate, RightScroll, function(val) getgenv().Config.Rage_FireRate = val end)
 
-CreateHeader("Desync Features", RightScroll)
+CreateHeader("Desync Settings", RightScroll)
 CreateToggle("Desync Features", "DesyncFeatures", RightScroll)
 CreateDropdown("Desync Mode", {"offscreen", "behind", "front", "above"}, getgenv().Config.DesyncMode, RightScroll, function(val) getgenv().Config.DesyncMode = val end)
 CreateSlider("Desync Height", 0, 50, getgenv().Config.DesyncHeight, RightScroll, function(val) getgenv().Config.DesyncHeight = val end)
@@ -345,3 +369,4 @@ LeftScroll.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(
 RightScroll.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() RightScroll.CanvasSize = UDim2.new(0, 0, 0, RightScroll.UIListLayout.AbsoluteContentSize.Y + 20) end)
 task.wait()
 LeftScroll.CanvasSize = UDim2.new(0, 0, 0, LeftScroll.UIListLayout.AbsoluteContentSize.Y + 20)
+RightScroll.CanvasSize = UDim2.new(0, 0, 0, RightScroll.UIListLayout.AbsoluteContentSize.Y + 20)
