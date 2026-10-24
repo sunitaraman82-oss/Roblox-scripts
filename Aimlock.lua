@@ -1,58 +1,55 @@
-
-if getgenv().ZK_Unload then pcall(getgenv().ZK_Unload) end
-
-local repS = cloneref(game:GetService("ReplicatedStorage"))
-local plrs = cloneref(game:GetService("Players"))
-local runS = cloneref(game:GetService("RunService"))
-local ws   = cloneref(game:GetService("Workspace"))
-local uis  = cloneref(game:GetService("UserInputService"))
-local lplr = plrs.LocalPlayer
+local cloneref = cloneref or function(o) return o end
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local Players = cloneref(game:GetService("Players"))
+local RunService = cloneref(game:GetService("RunService"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local lplr = Players.LocalPlayer
 local PlayerGui = lplr:WaitForChild("PlayerGui")
 
-local util = require(repS.Modules.Utility)
-local enum = require(repS.Modules.EnumLibrary)
-local FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
-local UseItemRemote = repS.Remotes.Replication.Fighter.UseItem
-local RespawnRemote = repS.Remotes.Duels.RespawnNow
+local util, enum, FighterController, UseItemRemote, RespawnRemote
+pcall(function()
+    util = require(ReplicatedStorage.Modules.Utility)
+    enum = require(ReplicatedStorage.Modules.EnumLibrary)
+    FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
+    UseItemRemote = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
+    RespawnRemote = ReplicatedStorage.Remotes.Duels.RespawnNow
+end)
+
+local CONFIG = {
+    MainBg = Color3.fromRGB(12, 10, 14),          
+    PanelBg = Color3.fromRGB(20, 15, 24),         
+    InputBg = Color3.fromRGB(35, 25, 40),         
+    Pink = Color3.fromRGB(255, 105, 180),         
+    Text = Color3.fromRGB(230, 230, 230),         
+    DimText = Color3.fromRGB(150, 150, 150),      
+    Font = Enum.Font.GothamMedium,
+    FontBold = Enum.Font.GothamBold,
+    Blossom = "rbxassetid://1316045217"           
+}
 
 getgenv().Config = {
-    Enabled        = true,
-    FireRate       = 0.001,
-    WeaponSlot     = "Primary",
-    MaxDistance    = 1000,
-    
-    AntiExplosion  = true,
-    AntiExplosionHeight = 300,
-    
-    DesyncEnabled  = true,
-    DesyncMode     = "offscreen",
-    DesyncHeight   = 1.0,
-    DesyncBack     = 2.0,
-
-    AntiAim        = true,
-    AntiAimSpeed   = 360,
+    AntiZombie = true, SilentAim = true, Rage = true, VoidSpam = false,
+    FireRate = 0.001, MaxDistance = 1000, Hitpart = "Head",
+    DesyncFeatures = true, DesyncMode = "offscreen", DesyncHeight = 1.0, DesyncBack = 2.0,
+    AntiExplosion = true, AntiExplosionHeight = 300, AntiAim = true, AntiAimSpeed = 360,
+    WeaponSlot = "Primary"
 }
 
 local slots = { Primary = 1, Secondary = 2, Melee = 3 }
-local State = { unloaded = false, lastFire = 0, lastEquip = 0, target = nil, restoreConn = nil, connections = {} }
+local State = { lastFire = 0, lastEquip = 0, target = nil, restoreConn = nil }
+local currentlyDodging = false
 
-local function track(c)
-    table.insert(State.connections, c)
-    return c
-end
-
-track(lplr.CharacterAdded:Connect(function()
+lplr.CharacterAdded:Connect(function()
     task.wait(0.1)
-    local char = lplr.Character
-    if char and char:FindFirstChildOfClass("Humanoid") then
-        pcall(function() RespawnRemote:FireServer() end)
-    end
-end))
+    if RespawnRemote then pcall(function() RespawnRemote:FireServer() end) end
+end)
 
-track(task.spawn(function()
-    while not State.unloaded do
+task.spawn(function()
+    while true do
         task.wait(0.5)
-        if not getgenv().Config.Enabled then continue end
+        if not getgenv().Config.AntiZombie or not FighterController then continue end
         if tick() - State.lastEquip < 0.5 then continue end
         State.lastEquip = tick()
         local lf = FighterController.LocalFighter
@@ -60,29 +57,33 @@ track(task.spawn(function()
             pcall(function() lf:EquipItem(slots[getgenv().Config.WeaponSlot] or 1) end)
         end
     end
-end))
+end)
 
 local function getClosestTarget()
     local char = lplr.Character
     if not char then return nil end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil end
-
     local closest, closestDist = nil, getgenv().Config.MaxDistance
     local myPos = myRoot.Position
-
-    for _, obj in ipairs(ws:GetDescendants()) do
-        if obj:IsA("Model") and obj ~= char and not plrs:GetPlayerFromCharacter(obj) then
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= char and not Players:GetPlayerFromCharacter(obj) then
             local hum = obj:FindFirstChildWhichIsA("Humanoid")
             if hum and hum.Health > 0 then
                 local root = obj:FindFirstChild("HumanoidRootPart")
                 local head = obj:FindFirstChild("Head") or obj:FindFirstChild("ZombieHead")
-                
                 if root and head then
                     local d = (myPos - root.Position).Magnitude
                     if d < closestDist then
+                        local targetPart = head
+                        if getgenv().Config.Hitpart == "Torso" then
+                            targetPart = obj:FindFirstChild("UpperTorso") or obj:FindFirstChild("Torso") or head
+                        elseif getgenv().Config.Hitpart == "Random" then
+                            local parts = {"Head", "UpperTorso", "LowerTorso", "Torso"}
+                            targetPart = obj:FindFirstChild(parts[math.random(#parts)]) or head
+                        end
                         closestDist = d
-                        closest = { Model = obj, Root = root, Head = head, Hum = hum, Distance = d }
+                        closest = { Model = obj, Root = root, Head = targetPart, Hum = hum, Distance = d }
                     end
                 end
             end
@@ -95,55 +96,39 @@ local function computeDesyncCFrame(target, myRoot)
     local root, head = target.Root, target.Head
     local cfg = getgenv().Config
     local offset
-
-    if cfg.DesyncMode == "offscreen" then
-        return CFrame.lookAt(root.Position + Vector3.new(0, 1000, 0), head.Position)
-    elseif cfg.DesyncMode == "behind" then
-        offset = CFrame.new(0, cfg.DesyncHeight, cfg.DesyncBack)
-    elseif cfg.DesyncMode == "front" then
-        offset = CFrame.new(0, cfg.DesyncHeight, -cfg.DesyncBack)
-    else
-        offset = CFrame.new(0, cfg.DesyncHeight + 2, 0)
-    end
-
+    if cfg.DesyncMode == "offscreen" then return CFrame.lookAt(root.Position + Vector3.new(0, 1000, 0), head.Position)
+    elseif cfg.DesyncMode == "behind" then offset = CFrame.new(0, cfg.DesyncHeight, cfg.DesyncBack)
+    elseif cfg.DesyncMode == "front" then offset = CFrame.new(0, cfg.DesyncHeight, -cfg.DesyncBack)
+    else offset = CFrame.new(0, cfg.DesyncHeight + 2, 0) end
     return CFrame.lookAt((root.CFrame * offset).Position, head.Position)
 end
 
-local function fireWithDesync(item, target)
+local function fireWeapon(item, target)
     local char = lplr.Character
     if not char then return end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
-
     local cfg = getgenv().Config
     local originPos, aimPos = myRoot.Position, target.Head.Position
 
-    if cfg.DesyncEnabled then
+    if cfg.DesyncFeatures then
         local desyncCF = computeDesyncCFrame(target, myRoot)
         originPos = desyncCF.Position
-
         local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
         myRoot.CFrame = desyncCF
-
         if State.restoreConn then State.restoreConn:Disconnect() end
-        State.restoreConn = runS.RenderStepped:Connect(function()
-            if myRoot and myRoot.Parent then
-                myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel
-            end
+        State.restoreConn = RunService.RenderStepped:Connect(function()
+            if myRoot and myRoot.Parent then myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel end
             if State.restoreConn then State.restoreConn:Disconnect(); State.restoreConn = nil end
         end)
     end
     
     if cfg.AntiAim and myRoot then
         local spinAngle = math.rad((tick() * cfg.AntiAimSpeed) % 360)
-        -- Spin the server-side CFrame violently to break zombie attacks/explosions
         myRoot.CFrame = CFrame.new(myRoot.Position) * CFrame.Angles(0, spinAngle, 0) * CFrame.Angles(math.rad(math.random(-90, 90)), 0, 0)
-        
         if State.restoreConn then State.restoreConn:Disconnect() end
-        State.restoreConn = runS.RenderStepped:Connect(function()
-            if myRoot and myRoot.Parent then
-                myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel
-            end
+        State.restoreConn = RunService.RenderStepped:Connect(function()
+            if myRoot and myRoot.Parent then myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel end
             if State.restoreConn then State.restoreConn:Disconnect(); State.restoreConn = nil end
         end)
     end
@@ -151,22 +136,10 @@ local function fireWithDesync(item, target)
     local aimCF = CFrame.lookAt(originPos, aimPos)
     local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
     local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(aimPos + rand))
-
-    local cameraData = {
-        [utf8.char(1)] = {
-            [utf8.char(0)] = util:EncodeCFrame(aimCF),
-            [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame),
-            [utf8.char(2)] = target.Head,
-            [utf8.char(3)] = util:EncodeCFrame(objSpaceHead),
-        }
-    }
-
-    pcall(function()
-        UseItemRemote:FireServer(item:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil)
-    end)
+    local cameraData = { [utf8.char(1)] = { [utf8.char(0)] = util:EncodeCFrame(aimCF), [utf8.char(1)] = util:EncodeCFrame(target.Head.CFrame), [utf8.char(2)] = target.Head, [utf8.char(3)] = util:EncodeCFrame(objSpaceHead) } }
+    
+    pcall(function() UseItemRemote:FireServer(item:Get("ObjectID"), enum:ToEnum("StartShooting"), cameraData, nil) end)
 end
-
-local currentlyDodging = false
 
 local function dodgeExplosion()
     if currentlyDodging or not getgenv().Config.AntiExplosion then return end
@@ -174,283 +147,201 @@ local function dodgeExplosion()
     if not char then return end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
-
     currentlyDodging = true
     local originalCF = myRoot.CFrame
-    
     myRoot.CFrame = originalCF + Vector3.new(0, getgenv().Config.AntiExplosionHeight, 0)
-    
     task.delay(0.15, function()
-        if myRoot and myRoot.Parent then
-            myRoot.CFrame = originalCF
-        end
+        if myRoot and myRoot.Parent then myRoot.CFrame = originalCF end
         currentlyDodging = false
     end)
 end
 
-track(runS.Heartbeat:Connect(function()
-    if State.unloaded or not getgenv().Config.Enabled then return end
+local function doVoidSpam(target)
+    if not getgenv().Config.VoidSpam then return end
+    local char = lplr.Character
+    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+    if myRoot and target and target.Root then
+        pcall(function() target.Root.CFrame = target.Root.CFrame + Vector3.new(0, 1000, 0) end)
+    end
+end
 
+RunService.Heartbeat:Connect(function()
+    if not getgenv().Config.SilentAim or not util or not enum or not FighterController then return end
     local target = State.target
     if target and target.Model and target.Model.Parent and target.Hum then
-        if target.Hum.Health > 0 and target.Hum.Health < (target.Hum.MaxHealth * 0.15) then
-            dodgeExplosion()
-        end
+        if target.Hum.Health > 0 and target.Hum.Health < (target.Hum.MaxHealth * 0.15) then dodgeExplosion() end
     end
-
     local lf = FighterController.LocalFighter
     if not lf or not lf.EquippedItem then return end
-
     local newTarget = getClosestTarget()
     State.target = newTarget
     if not newTarget then return end
-
     if tick() - State.lastFire < getgenv().Config.FireRate then return end
     State.lastFire = tick()
-    fireWithDesync(lf.EquippedItem, newTarget)
-end))
+    if getgenv().Config.VoidSpam then doVoidSpam(newTarget) else fireWeapon(lf.EquippedItem, newTarget) end
+end)
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "ZK_CustomUI"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.DisplayOrder = 999
-gui.Parent = PlayerGui
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "Main"
-mainFrame.Size = UDim2.fromOffset(280, 450)
-mainFrame.Position = UDim2.new(0.5, -140, 0.5, -225)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true 
-mainFrame.Visible = false
-mainFrame.Parent = gui
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 8)
-mainCorner.Parent = mainFrame
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(80, 180, 80)
-stroke.Thickness = 1.5
-stroke.Parent = mainFrame
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 40)
-title.BackgroundTransparency = 1
-title.Text = "Zombie Killer"
-title.TextColor3 = Color3.fromRGB(80, 180, 80)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.Parent = mainFrame
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.fromOffset(32, 32)
-closeBtn.Position = UDim2.new(1, -38, 0, 4)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-closeBtn.Text = "X"
-closeBtn.TextColor3 = Color3.new(1,1,1)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 14
-closeBtn.BorderSizePixel = 0
-closeBtn.Parent = mainFrame
-Instance.new("UICorner").Parent = closeBtn
-closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
-
-local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -20, 1, -50)
-scroll.Position = UDim2.fromOffset(10, 45)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 4
-scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 180, 80)
-scroll.Parent = mainFrame
-
-local list = Instance.new("UIListLayout")
-list.Padding = UDim.new(0, 10)
-list.SortOrder = Enum.SortOrder.LayoutOrder
-list.Parent = scroll
-
-local floatBtn = Instance.new("TextButton")
-floatBtn.Size = UDim2.fromOffset(50, 50)
-floatBtn.Position = UDim2.new(0, 20, 0.5, 0)
-floatBtn.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
-floatBtn.Text = "ZK"
-floatBtn.TextColor3 = Color3.new(1,1,1)
-floatBtn.Font = Enum.Font.GothamBold
-floatBtn.TextSize = 18
-floatBtn.BorderSizePixel = 0
-floatBtn.Draggable = true
-floatBtn.Parent = gui
-Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(1, 0)
-
-floatBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = not mainFrame.Visible
+local function Create(className, properties)
+    local instance = Instance.new(className)
+    for k, v in pairs(properties) do instance[k] = v end
+    return instance
 end
-local function addToggle(text, getter, setter)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 35)
-    row.BackgroundTransparency = 1
-    row.Parent = scroll
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text
-    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 14
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
+local function AddCorner(parent, radius) Create("UICorner", { CornerRadius = UDim.new(0, radius or 8), Parent = parent }) end
+local function AddStroke(parent, color, thickness, transparency) return Create("UIStroke", { Color = color or CONFIG.Pink, Thickness = thickness or 1, Transparency = transparency or 0, Parent = parent }) end
 
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.fromOffset(50, 26)
-    btn.Position = UDim2.new(1, -50, 0.5, -13)
-    btn.BackgroundColor3 = getter() and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(60, 60, 65)
-    btn.Text = getter() and "ON" or "OFF"
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 12
-    btn.BorderSizePixel = 0
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+local ScreenGui = Create("ScreenGui", { Name = "HalloweenTowerUI", ResetOnSpawn = false, Parent = PlayerGui })
+local ToggleBtn = Create("TextButton", { Size = UDim2.new(0, 80, 0, 35), Position = UDim2.new(0, 20, 0.5, -17), BackgroundColor3 = CONFIG.PanelBg, Text = "MENU", TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 14, Parent = ScreenGui })
+AddCorner(ToggleBtn, 6); AddStroke(ToggleBtn, CONFIG.Pink, 2, 0)
 
-    btn.MouseButton1Click:Connect(function()
-        setter(not getter())
-        btn.Text = getter() and "ON" or "OFF"
-        btn.BackgroundColor3 = getter() and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(60, 60, 65)
+local MainFrame = Create("Frame", { Name = "Main", Size = UDim2.new(0, 600, 0, 480), Position = UDim2.new(0.5, -300, 0.5, -240), BackgroundColor3 = CONFIG.MainBg, BorderSizePixel = 0, Parent = ScreenGui, ClipsDescendants = true, Visible = false })
+AddCorner(MainFrame, 12); AddStroke(MainFrame, CONFIG.Pink, 1.5, 0.2)
+
+Create("ImageLabel", { Image = CONFIG.Blossom, Size = UDim2.new(0, 400, 0, 400), Position = UDim2.new(1, -200, 0, -150), BackgroundTransparency = 1, ImageTransparency = 0.85, ImageColor3 = CONFIG.Pink, Parent = MainFrame })
+
+local isMenuOpen = false
+ToggleBtn.MouseButton1Click:Connect(function()
+    isMenuOpen = not isMenuOpen
+    if isMenuOpen then
+        MainFrame.Visible = true; MainFrame.Size = UDim2.new(0, 0, 0, 0)
+        TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 600, 0, 480) }):Play()
+    else
+        local closeTween = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.new(0, 0, 0, 0) })
+        closeTween:Play(); closeTween.Completed:Connect(function() MainFrame.Visible = false end)
+    end
+end)
+
+local dragging, dragInput, dragStart, startPos
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+    end
+end)
+MainFrame.InputChanged:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local TopBar = Create("Frame", { Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1, Parent = MainFrame })
+Create("TextLabel", { Text = "Halloween Tower | By Noami", Size = UDim2.new(1, -40, 1, 0), Position = UDim2.new(0, 20, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = TopBar })
+local CloseBtn = Create("TextButton", { Text = "X", Size = UDim2.new(0, 45, 0, 45), Position = UDim2.new(1, -45, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 14, Parent = TopBar })
+CloseBtn.MouseButton1Click:Connect(function()
+    isMenuOpen = false
+    local closeTween = TweenService:Create(MainFrame, TweenInfo.new(0.2), { Size = UDim2.new(0, 0, 0, 0) })
+    closeTween:Play(); closeTween.Completed:Connect(function() MainFrame.Visible = false end)
+end)
+Create("Frame", { Size = UDim2.new(1, -40, 0, 1), Position = UDim2.new(0, 20, 0, 45), BackgroundColor3 = CONFIG.Pink, BackgroundTransparency = 0.6, BorderSizePixel = 0, Parent = MainFrame })
+
+local ContentArea = Create("Frame", { Size = UDim2.new(1, -40, 1, -65), Position = UDim2.new(0, 20, 0, 55), BackgroundTransparency = 1, Parent = MainFrame })
+local LeftPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
+AddCorner(LeftPanel, 8); AddStroke(LeftPanel, CONFIG.Pink, 1, 0.7)
+Create("TextLabel", { Text = "Combat & Aim", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = LeftPanel })
+local LeftScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Pink, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = LeftPanel })
+Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 12), Parent = LeftScroll })
+
+local RightPanel = Create("Frame", { Size = UDim2.new(0.5, -10, 1, 0), Position = UDim2.new(0.5, 10, 0, 0), BackgroundColor3 = CONFIG.PanelBg, Parent = ContentArea })
+AddCorner(RightPanel, 8); AddStroke(RightPanel, CONFIG.Pink, 1, 0.7)
+Create("TextLabel", { Text = "Desync & Exploits", Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.FontBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = RightPanel })
+local RightScroll = Create("ScrollingFrame", { Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = CONFIG.Pink, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = RightPanel })
+Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 12), Parent = RightScroll })
+
+local function CreateHeader(text, parent)
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = text, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.DimText, Font = CONFIG.FontBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+end
+
+local function CreateToggle(name, featureKey, parent, callback)
+    local isChecked = getgenv().Config[featureKey]
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = name, Size = UDim2.new(0.75, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    local Pill = Create("Frame", { Size = UDim2.new(0, 34, 0, 16), Position = UDim2.new(1, -34, 0.5, -8), BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg, Parent = frame })
+    AddCorner(Pill, 8)
+    if isChecked then AddStroke(Pill, CONFIG.Pink, 1, 0) end
+    local Knob = Create("Frame", { Size = UDim2.new(0, 12, 0, 12), Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6), BackgroundColor3 = Color3.fromRGB(255,255,255), Parent = Pill })
+    AddCorner(Knob, 6)
+    local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = frame })
+    Btn.MouseButton1Click:Connect(function()
+        isChecked = not isChecked
+        getgenv().Config[featureKey] = isChecked
+        TweenService:Create(Pill, TweenInfo.new(0.2), { BackgroundColor3 = isChecked and CONFIG.Pink or CONFIG.InputBg }):Play()
+        TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Quart), { Position = isChecked and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6) }):Play()
+        if callback then callback(isChecked) end
     end)
 end
 
-local function addSlider(text, min, max, getter, setter, isFloat)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 50)
-    row.BackgroundTransparency = 1
-    row.Parent = scroll
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text .. ": " .. tostring(getter())
-    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 13
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-
-    local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, 0, 0, 8)
-    bar.Position = UDim2.new(0, 0, 0, 32)
-    bar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    bar.BorderSizePixel = 0
-    bar.Parent = row
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.fromScale((getter() - min) / (max - min), 1)
-    fill.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
-    fill.BorderSizePixel = 0
-    fill.Parent = bar
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.Parent = bar
-
+local function CreateSlider(name, min, max, default, parent, callback)
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Parent = parent })
+    local Top = Create("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Parent = frame })
+    Create("TextLabel", { Text = name, Size = UDim2.new(0.7, 0, 1, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Top })
+    local ValLabel = Create("TextLabel", { Text = tostring(default), Size = UDim2.new(0.3, 0, 1, 0), Position = UDim2.new(0.7, 0, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right, Parent = Top })
+    local Bar = Create("Frame", { Size = UDim2.new(1, 0, 0, 5), Position = UDim2.new(0, 0, 0, 22), BackgroundColor3 = CONFIG.InputBg, Parent = frame })
+    AddCorner(Bar, 3)
+    local Fill = Create("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = CONFIG.Pink, Parent = Bar })
+    AddCorner(Fill, 3)
+    local Knob = Create("Frame", { Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6), BackgroundColor3 = CONFIG.Pink, Parent = Bar })
+    AddCorner(Knob, 6); AddStroke(Knob, Color3.fromRGB(255,255,255), 1.5, 0.3)
+    local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = Bar })
     local dragging = false
     local function update(input)
-        local p = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-        local v = min + (max - min) * p
-        if not isFloat then v = math.floor(v) else v = tonumber(string.format("%.3f", v)) end
-        setter(v)
-        fill.Size = UDim2.fromScale(p, 1)
-        lbl.Text = text .. ": " .. tostring(v)
+        local percent = math.clamp((input.Position.X - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * percent)
+        if max <= 1 or (max - min) < 10 then val = math.round((min + (max - min) * percent) * 100) / 100 end
+        TweenService:Create(Fill, TweenInfo.new(0.05), { Size = UDim2.new(percent, 0, 1, 0) }):Play()
+        TweenService:Create(Knob, TweenInfo.new(0.05), { Position = UDim2.new(percent, -6, 0.5, -6) }):Play()
+        ValLabel.Text = tostring(val)
+        if callback then callback(val) end
     end
-
-    btn.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            update(i)
-        end
-    end)
-    track(uis.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            update(i)
-        end
-    end))
-    track(uis.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end))
+    Btn.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; update(input) end end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then update(input) end end)
 end
 
-local function addDropdown(text, options, getter, setter)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 50)
-    row.BackgroundTransparency = 1
-    row.Parent = scroll
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text
-    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 13
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 26)
-    btn.Position = UDim2.new(0, 0, 0, 22)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    btn.Text = tostring(getter())
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 12
-    btn.BorderSizePixel = 0
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-
+local function CreateDropdown(name, options, default, parent, callback)
+    local frame = Create("Frame", { Size = UDim2.new(1, 0, 0, 45), BackgroundTransparency = 1, Parent = parent })
+    Create("TextLabel", { Text = name, Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    local Btn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0, 18), BackgroundColor3 = CONFIG.InputBg, Text = "", Parent = frame })
+    AddCorner(Btn, 4); AddStroke(Btn, CONFIG.Pink, 1, 0.5)
+        local Label = Create("TextLabel", { Text = default, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Text, Font = CONFIG.Font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = Btn })
+    Create("TextLabel", { Text = "▼", Size = UDim2.new(0, 20, 1, 0), Position = UDim2.new(1, -20, 0, 0), BackgroundTransparency = 1, TextColor3 = CONFIG.Pink, Font = CONFIG.FontBold, TextSize = 10, Parent = Btn })
     local currentIndex = 1
-    for i, v in ipairs(options) do if v == getter() then currentIndex = i break end end
-
-    btn.MouseButton1Click:Connect(function()
+    for i, v in ipairs(options) do if v == default then currentIndex = i break end end
+    Btn.MouseButton1Click:Connect(function()
         currentIndex = currentIndex % #options + 1
-        setter(options[currentIndex])
-        btn.Text = tostring(options[currentIndex])
+        Label.Text = options[currentIndex]
+        if callback then callback(options[currentIndex]) end
     end)
 end
 
+CreateHeader("Anti Zombie", LeftScroll)
+CreateToggle("Anti Zombie (Auto Equip)", "AntiZombie", LeftScroll)
+CreateDropdown("Equip Slot", {"Primary", "Secondary", "Melee"}, getgenv().Config.WeaponSlot, LeftScroll, function(val) getgenv().Config.WeaponSlot = val end)
 
-addToggle("Enable Auto-Shoot", function() return getgenv().Config.Enabled end, function(v) getgenv().Config.Enabled = v end)
-addToggle("Anti-Explosion (Dodges Blast)", function() return getgenv().Config.AntiExplosion end, function(v) getgenv().Config.AntiExplosion = v end)
-addDropdown("Weapon Slot", {"Primary", "Secondary", "Melee"}, function() return getgenv().Config.WeaponSlot end, function(v) getgenv().Config.WeaponSlot = v end)
-addSlider("Fire Rate (seconds)", 0.00, 0.2, function() return getgenv().Config.FireRate end, function(v) getgenv().Config.FireRate = v end, true)
-addSlider("Max Distance", 50, 2000, function() return getgenv().Config.MaxDistance end, function(v) getgenv().Config.MaxDistance = v end, false)
+CreateHeader("Silent Aim", LeftScroll)
+CreateToggle("Silent Aim Enabled", "SilentAim", LeftScroll)
+CreateSlider("Fire Rate", 0.001, 0.5, getgenv().Config.FireRate, LeftScroll, function(val) getgenv().Config.FireRate = val end)
+CreateSlider("Max Distance", 50, 2000, getgenv().Config.MaxDistance, LeftScroll, function(val) getgenv().Config.MaxDistance = val end)
+CreateDropdown("Hitpart", {"Head", "Torso", "Random"}, getgenv().Config.Hitpart, LeftScroll, function(val) getgenv().Config.Hitpart = val end)
 
-addToggle("Desync (Safe Shooting)", function() return getgenv().Config.DesyncEnabled end, function(v) getgenv().Config.DesyncEnabled = v end)
-addDropdown("Desync Mode", {"offscreen", "behind", "front", "above"}, function() return getgenv().Config.DesyncMode end, function(v) getgenv().Config.DesyncMode = v end)
-addSlider("Desync Height", 0, 10, function() return getgenv().Config.DesyncHeight end, function(v) getgenv().Config.DesyncHeight = v end, true)
-addSlider("Desync Back", -5, 10, function() return getgenv().Config.DesyncBack end, function(v) getgenv().Config.DesyncBack = v end, true)
+CreateHeader("Other Combat", LeftScroll)
+CreateToggle("Rage", "Rage", LeftScroll)
+CreateToggle("Void Spam (Insta-Kill)", "VoidSpam", LeftScroll)
 
-addToggle("Anti-Aim (Spin Server Hitbox)", function() return getgenv().Config.AntiAim end, function(v) getgenv().Config.AntiAim = v end)
-addSlider("Anti-Aim Speed", 100, 1000, function() return getgenv().Config.AntiAimSpeed end, function(v) getgenv().Config.AntiAimSpeed = v end, false)
+CreateHeader("Desync Features", RightScroll)
+CreateToggle("Desync Features", "DesyncFeatures", RightScroll)
+CreateDropdown("Desync Mode", {"offscreen", "behind", "front", "above"}, getgenv().Config.DesyncMode, RightScroll, function(val) getgenv().Config.DesyncMode = val end)
+CreateSlider("Desync Height", 0, 50, getgenv().Config.DesyncHeight, RightScroll, function(val) getgenv().Config.DesyncHeight = val end)
+CreateSlider("Desync Back", -5, 10, getgenv().Config.DesyncBack, RightScroll, function(val) getgenv().Config.DesyncBack = val end)
 
-scroll.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y)
+CreateHeader("Protection / Anti-Aim", RightScroll)
+CreateToggle("Anti-Explosion", "AntiExplosion", RightScroll)
+CreateToggle("Anti-Aim (Spin Server)", "AntiAim", RightScroll)
+CreateSlider("Anti-Aim Speed", 100, 1000, getgenv().Config.AntiAimSpeed, RightScroll, function(val) getgenv().Config.AntiAimSpeed = val end)
 
-getgenv().ZK_Unload = function()
-    if State.unloaded then return end
-    State.unloaded = true
-    for _, c in ipairs(State.connections) do pcall(function() c:Disconnect() end) end
-    State.connections = {}
-    if State.restoreConn then State.restoreConn:Disconnect() end
-    if gui then gui:Destroy() end
-end
-
-print("[ZK] Loaded! Anti-Aim is ON by default.")
+LeftScroll.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() LeftScroll.CanvasSize = UDim2.new(0, 0, 0, LeftScroll.UIListLayout.AbsoluteContentSize.Y + 20) end)
+RightScroll.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() RightScroll.CanvasSize = UDim2.new(0, 0, 0, RightScroll.UIListLayout.AbsoluteContentSize.Y + 20) end)
+task.wait()
+LeftScroll.CanvasSize = UDim2.new(0, 0, 0, LeftScroll.UIListLayout.AbsoluteContentSize.Y + 20)
