@@ -5,6 +5,7 @@ local RunService = cloneref(game:GetService("RunService"))
 local Workspace = cloneref(game:GetService("Workspace"))
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+
 local lplr = Players.LocalPlayer
 local PlayerGui = lplr:WaitForChild("PlayerGui")
 
@@ -89,7 +90,8 @@ RunService.Heartbeat:Connect(function()
     if tick() - State.AZ_lastFire < getgenv().Config.AZ_FireRate then return end
     State.AZ_lastFire = tick()
 
-    local originPos = target.Head.Position + Vector3.new(0, 1, 0)
+    local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+    local originPos = myRoot and myRoot.Position or target.Root.Position
     local aimCF = CFrame.lookAt(originPos, target.Head.Position)
     local rand = Vector3.new((math.random()-0.5)*0.02, (math.random()-0.5)*0.02, (math.random()-0.5)*0.02)
     local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
@@ -107,17 +109,8 @@ RunService.Heartbeat:Connect(function()
     State.SA_lastFire = tick()
 
     local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
-    if myRoot then
-        local desyncCF = CFrame.lookAt((target.Root.CFrame * CFrame.new(0, 1, 2)).Position, target.Head.Position)
-        local oldCF, oldVel, oldRotVel = myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity
-        myRoot.CFrame = desyncCF
-        RunService:BindToRenderStep("__restoreSA", 101, function()
-            if myRoot then myRoot.CFrame, myRoot.Velocity, myRoot.RotVelocity = oldCF, oldVel, oldRotVel end
-            RunService:UnbindFromRenderStep("__restoreSA")
-        end)
-    end
-
-    local originPos = myRoot and myRoot.CFrame.Position or target.Root.Position
+    local originPos = myRoot and myRoot.Position or target.Root.Position
+    
     local aimCF = CFrame.lookAt(originPos, target.Head.Position)
     local rand = Vector3.new((math.random()-0.5)*0.1, (math.random()-0.5)*0.1, (math.random()-0.5)*0.1)
     local objSpaceHead = target.Head.CFrame:ToObjectSpace(CFrame.new(target.Head.Position + rand))
@@ -348,6 +341,7 @@ CreateSlider("Silent Aim Fire Rate", 0.001, 0.5, getgenv().Config.SA_FireRate, L
 CreateHeader("Global Settings", LeftScroll)
 CreateSlider("Max Distance", 50, 2000, getgenv().Config.MaxDistance, LeftScroll, function(val) getgenv().Config.MaxDistance = val end)
 CreateDropdown("Hitpart", {"Head", "Torso", "Random"}, getgenv().Config.Hitpart, LeftScroll, function(val) getgenv().Config.Hitpart = val end)
+
 
 CreateHeader("Rage Features (zombi.txt)", RightScroll)
 CreateToggle("Rage Enabled", "Rage", RightScroll)
