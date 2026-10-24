@@ -34,12 +34,12 @@ getgenv().Config = {
     WalkSpeed = { Enabled = false, Speed = 2 },
     Sliding = { Enabled = false, Speed = 10 },
     JumpPower = { Enabled = false, Speed = 2 },
-    Flight = { Enabled = false, Speed = 100 },
-    LongJump = { Enabled = false, Mode = "Under Feet", Force = 60, UpwardVelocity = 20, Behind = 8 }
+    Fly = { Enabled = false, Speed = 100 },
+    Noclip = { Enabled = false }
 }
 
 local slots = { Primary = 1, Secondary = 2, Melee = 3 }
-local State = { AZ_lastFire = 0, SA_lastFire = 0, Rage_lastFire = 0, AZ_lastEquip = 0, target = nil, restoreConn = nil, flightConn = nil }
+local State = { AZ_lastFire = 0, SA_lastFire = 0, Rage_lastFire = 0, AZ_lastEquip = 0, target = nil, restoreConn = nil, flyConn = nil, flyGyro = nil, flyPos = nil }
 local currentlyDodging = false
 
 lplr.CharacterAdded:Connect(function()
@@ -59,7 +59,7 @@ task.spawn(function()
     end
 end)
 
--- Movement Logic (Flight & Speed)
+-- Movement Logic (Walk Speed, Jump, Noclip, Fly)
 RunService.Heartbeat:Connect(function()
     local char = lplr.Character
     if not char then return end
@@ -67,14 +67,54 @@ RunService.Heartbeat:Connect(function()
     local hum = char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
 
-    -- Flight
-    if getgenv().Config.Flight.Enabled then
-        local moveDir = hum.MoveDirection
-        if moveDir.Magnitude > 0 then
-            hrp.Velocity = moveDir * getgenv().Config.Flight.Speed
-        else
-            hrp.Velocity = Vector3.new(0, 0, 0)
+    -- Walk Speed
+    if getgenv().Config.WalkSpeed.Enabled then
+        hum.WalkSpeed = 16 * getgenv().Config.WalkSpeed.Speed
+    else
+        hum.WalkSpeed = 16
+    end
+
+    -- Jump Power
+    if getgenv().Config.JumpPower.Enabled then
+        hum.UseJumpPower = true
+        hum.JumpPower = 50 * getgenv().Config.JumpPower.Speed
+    else
+        hum.UseJumpPower = false
+    end
+
+    -- Sliding (Boosts speed if walking and holding Ctrl/C)
+    if getgenv().Config.Sliding.Enabled and getgenv().Config.WalkSpeed.Enabled then
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then
+            hum.WalkSpeed = 16 * getgenv().Config.Sliding.Speed
         end
+    end
+
+    -- Noclip
+    if getgenv().Config.Noclip.Enabled then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("BasePart") and v.CanCollide then
+                v.CanCollide = false
+            end
+        end
+    end
+
+    -- Fly
+    if getgenv().Config.Fly.Enabled then
+        if not State.flyGyro then
+            State.flyGyro = Instance.new("BodyGyro", hrp)
+            State.flyGyro.P = 9e4
+            State.flyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+            State.flyGyro.cframe = hrp.CFrame
+            State.flyPos = Instance.new("BodyPosition", hrp)
+            State.flyPos.maxForce = Vector3.new(9e9, 9e9, 9e9)
+            State.flyPos.position = hrp.Position
+        end
+        
+        if State.flyGyro then State.flyGyro.cframe = workspace.CurrentCamera.CFrame end
+        if State.flyPos then State.flyPos.position = State.flyPos.position + (hum.MoveDirection * getgenv().Config.Fly.Speed) end
+    else
+        if State.flyGyro then State.flyGyro:Destroy(); State.flyGyro = nil end
+        if State.flyPos then State.flyPos:Destroy(); State.flyPos = nil end
     end
 end)
 
@@ -387,15 +427,16 @@ CreateDropdown("Hitpart", {"Head", "Torso", "Random"}, getgenv().Config.Hitpart,
 
 
 -- POPULATE RIGHT PANEL (Rage & Desync & Movement)
-CreateHeader("Movement (Screenshots)", RightScroll)
+CreateHeader("Movement", RightScroll)
 CreateToggle("Walk Speed Enabled", "WalkSpeed", RightScroll)
 CreateSlider("Walk Speed Multiplier", 1, 10, 2, RightScroll, function(val) getgenv().Config.WalkSpeed.Speed = val end)
 CreateToggle("Sliding Enabled", "Sliding", RightScroll)
 CreateSlider("Sliding Multiplier", 1, 10, 10, RightScroll, function(val) getgenv().Config.Sliding.Speed = val end)
 CreateToggle("Jump Power Enabled", "JumpPower", RightScroll)
 CreateSlider("Jump Power Multiplier", 1, 10, 2, RightScroll, function(val) getgenv().Config.JumpPower.Speed = val end)
-CreateToggle("Flight Enabled", "Flight", RightScroll)
-CreateSlider("Flight Speed", 10, 500, 100, RightScroll, function(val) getgenv().Config.Flight.Speed = val end)
+CreateToggle("Fly Enabled", "Fly", RightScroll)
+CreateSlider("Fly Speed", 10, 500, 100, RightScroll, function(val) getgenv().Config.Fly.Speed = val end)
+CreateToggle("Noclip Enabled", "Noclip", RightScroll)
 
 CreateHeader("Rage Features (zombi.txt)", RightScroll)
 CreateToggle("Rage Enabled", "Rage", RightScroll)
