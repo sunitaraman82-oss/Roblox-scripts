@@ -23,7 +23,7 @@ getgenv().Config = {
     FFAFireBoost = true,
     KnifeHoverHeight = 9,
     KnifeBehindOffset = -4,
-    MaxDist = 500
+    MaxDist = 1000
 }
 
 local slots = { Primary = 1, Secondary = 2, Melee = 3 }
@@ -447,7 +447,7 @@ CreateToggle("Rage (Master)", function() return getgenv().Config.Enabled end, fu
 CreateDropdown("Weapon Slot", {"Primary", "Secondary", "Melee"}, getgenv().Config.WeaponSlot, CombatPage, function(val) getgenv().Config.WeaponSlot = val end)
 CreateToggle("Lowest Health Target", function() return getgenv().Config.LowestHealth end, function(v) getgenv().Config.LowestHealth = v end, CombatPage)
 CreateSlider("Fire Rate (0=inst)", 0, 0.1, getgenv().Config.FireRate, CombatPage, function(val) getgenv().Config.FireRate = val end)
-CreateSlider("Max Distance", 50, 500, getgenv().Config.MaxDist, CombatPage, function(val) getgenv().Config.MaxDist = val end)
+CreateSlider("Max Distance", 50, 1000, getgenv().Config.MaxDist, CombatPage, function(val) getgenv().Config.MaxDist = val end)
 
 -- PAGE 2: DESYNC
 CreateHeader("DESYNC SETTINGS", DesyncPage)
