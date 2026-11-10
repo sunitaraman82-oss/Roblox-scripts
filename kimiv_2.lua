@@ -14,14 +14,15 @@ getgenv().Config = {
     Enabled = true,
     FireRate = 0.0005,
     WeaponSlot = "Melee",
-    DesyncMode = "KnifeAware",
-    AimFromDesync = true,
-    Prediction = true,
-    PredictionTime = 0.05,
-    StickyTarget = true,
-    OrbitSpeed = 2.0,
-    OrbitRadius = 14,
+    DesyncMode = "KnifeAware",   -- "KnifeAware" | "Jitter" | "Orbit" | "Off"
     JitterRange = 3,
+    OrbitSpeed = 6.0,            -- bumped from 2.0, blatant
+    OrbitRadius = 14,
+    LowestHealth = true,         -- target lowest-HP enemy in range
+    FFAMode = false,             -- free-for-all: faster cycling + auto-respawn + drop vacuum
+    FFAFireBoost = true,         -- fire every tick when FFAMode is on
+    KnifeHoverHeight = 9,        -- raised from 6, knife lunge whiffs under us
+    KnifeBehindOffset = -4,      -- sit behind the knife user's swing plane
     MaxDist = 500
 }
 
@@ -30,6 +31,7 @@ local function getSlotNumber()
     return slots[getgenv().Config.WeaponSlot] or 3
 end
 
+-- equip keep-alive (holds slot, never swaps)
 task.spawn(function()
     while not FighterController.LocalFighter do task.wait(0.1) end
     pcall(function() FighterController.LocalFighter:EquipItem(getSlotNumber()) end)
@@ -42,12 +44,8 @@ task.spawn(function()
 end)
 
 local lastFire = 0
-local lockedTarget = nil
 local deflecting = {}
-plrs.PlayerRemoving:Connect(function(p)
-    deflecting[p] = nil
-    if lockedTarget == p then lockedTarget = nil end
-end)
+plrs.PlayerRemoving:Connect(function(p) deflecting[p] = nil end)
 
 local function updateDeflection()
     if not FighterController or not FighterController.Objects then return end
@@ -86,63 +84,36 @@ local function isEnemy(player)
     return true
 end
 
-local function scoreTarget(player, root, dist)
-    local score = dist
-    if deflecting[player] then score = score + 1000 end
-    if lockedTarget == player then score = score - 250 end
-    return score
-end
-
+-- v3 target selection: alive-check, shield skip, lowest-health priority, deflect penalty
 local function pickTarget()
     local char = lplr.Character
     if not char then return nil, nil, nil end
     local myRoot = char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil, nil, nil end
-    local bestPlayer, bestRoot, bestHead, bestScore = nil, nil, nil, math.huge
+    local cfg = getgenv().Config
+    local bestPlayer, bestRoot, bestHead = nil, nil, nil
+    local bestScore = math.huge
     for _, player in plrs:GetPlayers() do
         if not isEnemy(player) then continue end
         local pChar = player.Character
         if not pChar then continue end
         if pChar:FindFirstChildOfClass("ForceField") then continue end
+        local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
+        if not pHum or pHum.Health <= 0 then continue end   -- alive-check, hard gate
         local pRoot = pChar:FindFirstChild("HumanoidRootPart")
         local pHead = pChar:FindFirstChild("Head")
-        local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
-        if not (pRoot and pHead and pHum and pHum.Health > 0) then continue end
+        if not (pRoot and pHead) then continue end
         local dist = (myRoot.Position - pRoot.Position).Magnitude
-        if dist > getgenv().Config.MaxDist then continue end
-        local score = scoreTarget(player, pRoot, dist)
+        if dist > cfg.MaxDist then continue end
+        local score = dist
+        if deflecting[player] then score = score + 1000 end
+        if cfg.LowestHealth then score = score + pHum.Health * 2 end  -- lower HP wins
         if score < bestScore then
             bestScore = score
             bestPlayer, bestRoot, bestHead = player, pRoot, pHead
         end
     end
     return bestPlayer, bestRoot, bestHead
-end
-
-local function getTarget()
-    local cfg = getgenv().Config
-    if cfg.StickyTarget and lockedTarget then
-        local pChar = lockedTarget.Character
-        local ok = pChar
-            and isEnemy(lockedTarget)
-            and not pChar:FindFirstChildOfClass("ForceField")
-            and pChar:FindFirstChildWhichIsA("Humanoid")
-            and pChar:FindFirstChildWhichIsA("Humanoid").Health > 0
-        if ok then
-            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-            local pHead = pChar:FindFirstChild("Head")
-            local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
-            if pRoot and pHead and myRoot then
-                if (myRoot.Position - pRoot.Position).Magnitude <= cfg.MaxDist then
-                    return lockedTarget, pRoot, pHead
-                end
-            end
-        end
-        lockedTarget = nil
-    end
-    local tp, tr, th = pickTarget()
-    if tp then lockedTarget = tp end
-    return tp, tr, th
 end
 
 local function hasKnifeViewModel(targetPlayer)
@@ -158,14 +129,6 @@ local function hasKnifeViewModel(targetPlayer)
         end
     end
     return false
-end
-
-local function predictPoint(targetRoot, targetHead)
-    local cfg = getgenv().Config
-    if not cfg.Prediction then return targetHead.Position end
-    local vel = targetRoot.AssemblyLinearVelocity
-    if not vel then return targetHead.Position end
-    return targetHead.Position + vel * cfg.PredictionTime
 end
 
 local restoreBound = false
@@ -190,15 +153,20 @@ end
 runS.Heartbeat:Connect(function()
     updateDeflection()
     local cfg = getgenv().Config
-    local targetPlayer, targetRoot, targetHead = getTarget()
+    local targetPlayer, targetRoot, targetHead = pickTarget()
     local desyncCF = nil
 
     if targetRoot and targetHead then
         if cfg.DesyncMode == "KnifeAware" then
-            local offset = hasKnifeViewModel(targetPlayer)
-                and CFrame.new(0, 6, 0)
-                or CFrame.new(0, 3, -20)
-            desyncCF = CFrame.lookAt((targetRoot.CFrame * offset).Position, targetHead.Position)
+            if hasKnifeViewModel(targetPlayer) then
+                -- hover high AND behind their swing plane: knife lunge goes under/forward, whiffs
+                desyncCF = CFrame.lookAt(
+                    (targetRoot.CFrame * CFrame.new(0, cfg.KnifeHoverHeight, cfg.KnifeBehindOffset)).Position,
+                    targetHead.Position
+                )
+            else
+                desyncCF = CFrame.lookAt((targetRoot.CFrame * CFrame.new(0, 3, -20)).Position, targetHead.Position)
+            end
         elseif cfg.DesyncMode == "Jitter" then
             local r = cfg.JitterRange
             local jitterPos = targetHead.Position + Vector3.new(math.random(-r, r), math.random(-r, r), math.random(-r, r))
@@ -225,12 +193,14 @@ runS.Heartbeat:Connect(function()
     local data = rawget(item, "Data")
     if info and info.Type == "Gun" and data and data.Ammo <= 0 then return end
 
-    if tick() - lastFire < cfg.FireRate then return end
+    -- FFA speed boost: fire every tick when enabled
+    local rate = (cfg.FFAMode and cfg.FFAFireBoost) and 0 or cfg.FireRate
+    if tick() - lastFire < rate then return end
     lastFire = tick()
 
-    local aimPoint = predictPoint(targetRoot, targetHead)
-    local originPos = (desyncCF and cfg.AimFromDesync) and desyncCF.Position or targetRoot.Position
-    local aimCF = CFrame.lookAt(originPos, aimPoint)
+    -- head-only aim, always
+    local originPos = targetRoot.Position
+    local aimCF = CFrame.lookAt(originPos, targetHead.Position)
 
     local cameradata = {}
     cameradata[utf8.char(1)] = {
@@ -261,20 +231,93 @@ runS.Heartbeat:Connect(function()
     )
 end)
 
+-- // FREE-FOR-ALL MODULE: auto-respawn + drop vacuum //
+local ffa = { AutoRespawn = true, DropVacuum = true }
+getgenv().FFA = ffa
+
+local function forceRemoteRespawn()
+    pcall(function()
+        local remotesFolder = repS:FindFirstChild("Remotes")
+        if not remotesFolder then return end
+        local duelsFolder = remotesFolder:FindFirstChild("Duels")
+        if not duelsFolder then return end
+        local respawnRemote = duelsFolder:FindFirstChild("RespawnNow")
+        if respawnRemote and respawnRemote:IsA("RemoteEvent") then
+            respawnRemote:FireServer()
+        end
+    end)
+end
+
+lplr.CharacterAdded:Connect(function(newCharacter)
+    local humanoid = newCharacter:WaitForChild("Humanoid")
+    humanoid.Died:Connect(function()
+        if not ffa.AutoRespawn then return end
+        task.spawn(function()
+            while ffa.AutoRespawn do
+                local char = lplr.Character
+                if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    break
+                end
+                forceRemoteRespawn()
+                task.wait(0.1)
+            end
+        end)
+    end)
+end)
+
+local visitedDrops = {}
+local function handleNewDrop(object)
+    if not ffa.DropVacuum then return end
+    if not (object:IsA("BasePart") and object.Name == "_drop") then return end
+    if visitedDrops[object] then return end
+    visitedDrops[object] = true
+    task.wait()
+    pcall(function()
+        local char = lplr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if object:IsDescendantOf(ws) and hrp then
+            object.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
+            object.Anchored = true
+            object.CanCollide = false
+            object.Transparency = 1
+            for _, child in pairs(object:GetDescendants()) do
+                if child:IsA("BasePart") or child:IsA("UnionOperation") or child:IsA("MeshPart") then
+                    pcall(function()
+                        child.Transparency = 1
+                        child.CanCollide = false
+                    end)
+                elseif child:IsA("BillboardGui") or child:IsA("SurfaceGui") or child:IsA("ParticleEmitter") or child:IsA("SelectionBox") then
+                    pcall(function()
+                        child.Enabled = false
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+for _, object in ipairs(ws:GetDescendants()) do
+    if object:IsA("BasePart") and object.Name == "_drop" then
+        visitedDrops[object] = true
+    end
+end
+ws.DescendantAdded:Connect(handleNewDrop)
+
+-- // UI — declarative builder //
 local function buildUI()
     local parent = (gethui and gethui()) or cloneref(game:GetService("CoreGui"))
-    local old = parent:FindFirstChild("BestRageV2")
+    local old = parent:FindFirstChild("BestRageV3")
     if old then old:Destroy() end
 
     local gui = Instance.new("ScreenGui")
-    gui.Name = "BestRageV2"
+    gui.Name = "BestRageV3"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = parent
 
     local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 270, 0, 300)
-    main.Position = UDim2.new(0.5, -135, 0.5, -150)
+    main.Size = UDim2.new(0, 270, 0, 340)
+    main.Position = UDim2.new(0.5, -135, 0.5, -170)
     main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
     main.BorderSizePixel = 0
     main.Active = true
@@ -284,6 +327,7 @@ local function buildUI()
     stroke.Color = Color3.fromRGB(75, 0, 130)
     stroke.Thickness = 1.5
 
+    -- drag
     local dragging, dragInput, dragStart, startPos
     main.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -311,7 +355,7 @@ local function buildUI()
     title.Size = UDim2.new(1, -40, 0, 35)
     title.Position = UDim2.new(0, 10, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "BEST RAGE v2 — CRISIS PROTOCOL"
+    title.Text = "BEST RAGE v3 — CRISIS+"
     title.TextColor3 = Color3.fromRGB(220, 180, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 13
@@ -346,6 +390,9 @@ local function buildUI()
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
+
+    local function cfgGet(key) return getgenv().Config[key] end
+    local function cfgSet(key, val) getgenv().Config[key] = val end
 
     local builders = {}
 
@@ -480,33 +527,39 @@ local function buildUI()
         end)
     end
 
-    local function cfgGet(key) return getgenv().Config[key] end
-    local function cfgSet(key, val) getgenv().Config[key] = val end
+    -- UI toggle state (separate from rage state)
+    getgenv().UIVisible = true
 
     local specs = {
-        { kind = "toggle",   name = "Rage (Master)",        get = function() return cfgGet("Enabled") end,            set = function(v) cfgSet("Enabled", v) end },
-        { kind = "dropdown", name = "Weapon Slot",          options = {"Primary", "Secondary", "Melee"},               get = function() return cfgGet("WeaponSlot") end,         set = function(v) cfgSet("WeaponSlot", v) end },
-        { kind = "dropdown", name = "Desync Mode",          options = {"KnifeAware", "Jitter", "Orbit", "Off"},        get = function() return cfgGet("DesyncMode") end,         set = function(v) cfgSet("DesyncMode", v) end },
-        { kind = "toggle",   name = "Aim From Desync Pos",  get = function() return cfgGet("AimFromDesync") end,      set = function(v) cfgSet("AimFromDesync", v) end },
-        { kind = "toggle",   name = "Sticky Target",        get = function() return cfgGet("StickyTarget") end,       set = function(v) cfgSet("StickyTarget", v) end },
-        { kind = "toggle",   name = "Velocity Prediction",  get = function() return cfgGet("Prediction") end,         set = function(v) cfgSet("Prediction", v) end },
-        { kind = "slider",   name = "Fire Rate (0=inst)",   min = 0, max = 0.1,                                        get = function() return cfgGet("FireRate") end,           set = function(v) cfgSet("FireRate", v) end },
-        { kind = "slider",   name = "Prediction Lead (s)",  min = 0, max = 0.3,                                        get = function() return cfgGet("PredictionTime") end,     set = function(v) cfgSet("PredictionTime", v) end },
-        { kind = "slider",   name = "Orbit Speed",          min = 0.5, max = 8,                                        get = function() return cfgGet("OrbitSpeed") end,         set = function(v) cfgSet("OrbitSpeed", v) end },
-        { kind = "slider",   name = "Orbit Radius",         min = 6, max = 30,                                         get = function() return cfgGet("OrbitRadius") end,        set = function(v) cfgSet("OrbitRadius", v) end },
-        { kind = "slider",   name = "Jitter Range",         min = 1, max = 8,                                          get = function() return cfgGet("JitterRange") end,        set = function(v) cfgSet("JitterRange", v) end },
+        { kind = "toggle",   name = "Rage (Master)",           get = function() return cfgGet("Enabled") end,       set = function(v) cfgSet("Enabled", v) end },
+        { kind = "toggle",   name = "UI Visible",              get = function() return getgenv().UIVisible end,     set = function(v) getgenv().UIVisible = v gui.Enabled = v end },
+        { kind = "dropdown", name = "Weapon Slot",             options = {"Primary", "Secondary", "Melee"},          get = function() return cfgGet("WeaponSlot") end,    set = function(v) cfgSet("WeaponSlot", v) end },
+        { kind = "dropdown", name = "Desync Mode",             options = {"KnifeAware", "Jitter", "Orbit", "Off"}, get = function() return cfgGet("DesyncMode") end,    set = function(v) cfgSet("DesyncMode", v) end },
+        { kind = "toggle",   name = "Lowest Health Target",    get = function() return cfgGet("LowestHealth") end,  set = function(v) cfgSet("LowestHealth", v) end },
+        { kind = "toggle",   name = "Free For All (boost)",   get = function() return cfgGet("FFAMode") end,       set = function(v) cfgSet("FFAMode", v) end },
+        { kind = "toggle",   name = "FFA Fire Boost",         get = function() return cfgGet("FFAFireBoost") end,  set = function(v) cfgSet("FFAFireBoost", v) end },
+        { kind = "slider",   name = "Fire Rate (0=inst)",      min = 0, max = 0.1,                                   get = function() return cfgGet("FireRate") end,      set = function(v) cfgSet("FireRate", v) end },
+        { kind = "slider",   name = "Jitter Range",            min = 1, max = 8,                                     get = function() return cfgGet("JitterRange") end,   set = function(v) cfgSet("JitterRange", v) end },
+        { kind = "slider",   name = "Orbit Speed",             min = 1, max = 12,                                    get = function() return cfgGet("OrbitSpeed") end,    set = function(v) cfgSet("OrbitSpeed", v) end },
+        { kind = "slider",   name = "Orbit Radius",            min = 6, max = 30,                                    get = function() return cfgGet("OrbitRadius") end,   set = function(v) cfgSet("OrbitRadius", v) end },
+        { kind = "slider",   name = "Knife Hover Height",      min = 5, max = 15,                                    get = function() return cfgGet("KnifeHoverHeight") end, set = function(v) cfgSet("KnifeHoverHeight", v) end },
+        { kind = "slider",   name = "Knife Behind Offset",     min = -8, max = 0,                                    get = function() return cfgGet("KnifeBehindOffset") end, set = function(v) cfgSet("KnifeBehindOffset", v) end },
+        { kind = "toggle",   name = "FFA Auto-Respawn",       get = function() return ffa.AutoRespawn end,         set = function(v) ffa.AutoRespawn = v end },
+        { kind = "toggle",   name = "FFA Drop Vacuum",        get = function() return ffa.DropVacuum end,          set = function(v) ffa.DropVacuum = v end },
     }
 
     for _, spec in specs do
         builders[spec.kind](spec)
     end
 
+    -- RightShift = toggle UI visibility (same as UI Visible toggle)
     uis.InputBegan:Connect(function(input, gpe)
         if not gpe and input.KeyCode == Enum.KeyCode.RightShift then
-            gui.Enabled = not gui.Enabled
+            getgenv().UIVisible = not getgenv().UIVisible
+            gui.Enabled = getgenv().UIVisible
         end
     end)
 end
 
 buildUI()
-print("[BestRage v2] loaded | RightShift = UI | no auto-swap | sticky target + prediction + orbit desync")
+print("[BestRage v3.1] loaded | RightShift = UI toggle | UI Visible toggle in menu")
