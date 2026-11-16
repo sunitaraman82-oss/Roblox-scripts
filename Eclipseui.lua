@@ -1761,12 +1761,18 @@ end
 
 local RUN_DEMO = true
 
-
 if RUN_DEMO then
     local win = Eclipse:CreateWindow({ Title = "Eclipse", Keybind = Enum.KeyCode.RightShift })
     
+    -- Create the Tabs
+    local SkinsTab = win:AddTab({ Name = "Skins", Icon = "person" })
+    local CombatTab = win:AddTab({ Name = "Combat", Icon = "crosshair" })
+    win:AddTab({ Name = "Visuals", Icon = "eye" })
+    win:AddTab({ Name = "Player", Icon = "person" })
+    win:AddSettingsTab()
+
     -- =========================================================
-    -- SKIN CHANGER LOGIC (DATA SPOOFING)
+    -- WORKING SKIN CHANGER LOGIC
     -- =========================================================
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -1790,15 +1796,13 @@ if RUN_DEMO then
     end
 
     local Rivals = {
-        Enums      = loadGameModule(ReplicatedStorage, {"Modules", "EnumLibrary"}),
         Cosmetics  = loadGameModule(ReplicatedStorage, {"Modules", "CosmeticLibrary"}),
         PlayerData = loadGameModule(lp.PlayerScripts, {"Controllers", "PlayerDataController"}),
     }
 
-    local _eq, _favs = {}, {}
+    local _eq = {}
 
     if Rivals.Cosmetics and Rivals.PlayerData then
-        -- 1. Force ownership
         local origOwnsCosmetic = Rivals.Cosmetics.OwnsCosmetic
         Rivals.Cosmetics.OwnsCosmetic = function(self, inv, name, weapon)
             local cosmetic = Rivals.Cosmetics.Cosmetics[name]
@@ -1808,7 +1812,6 @@ if RUN_DEMO then
             return origOwnsCosmetic(self, inv, name, weapon)
         end
 
-        -- 2. Trick inventory Get
         local origGet = Rivals.PlayerData.Get
         Rivals.PlayerData.Get = function(self, key)
             local val = origGet(self, key)
@@ -1825,18 +1828,9 @@ if RUN_DEMO then
                     end
                 })
             end
-            if key == "FavoritedCosmetics" then
-                local res = val and table.clone(val) or {}
-                for wep, fv in pairs(_favs) do
-                    res[wep] = res[wep] or {}
-                    for nm, isFav in pairs(fv) do res[wep][nm] = isFav end
-                end
-                return res
-            end
             return val
         end
 
-        -- 3. Trick Weapon Data Get
         local origGetWeaponData = Rivals.PlayerData.GetWeaponData
         Rivals.PlayerData.GetWeaponData = function(self, weaponName)
             local data = origGetWeaponData(self, weaponName)
@@ -1850,10 +1844,8 @@ if RUN_DEMO then
             return merged
         end
 
-        -- 4. Hook Equip Remote
         local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local DataRem = Remotes and Remotes:FindFirstChild("Data")
-        local EquipRem = DataRem and DataRem:FindFirstChild("EquipCosmetic")
+        local EquipRem = Remotes and Remotes.Data and Remotes.Data:FindFirstChild("EquipCosmetic")
 
         if EquipRem and hookmetamethod then
             local oldNamecall
@@ -1885,10 +1877,9 @@ if RUN_DEMO then
     end
 
     -- =========================================================
-    -- UI BUILDER
+    -- CONNECT TO UI
     -- =========================================================
-    local Tab = win:AddTab({ Name = "Skins", Icon = "crosshair" })
-    local Sec = Tab:AddSection({ Name = "Skin Swapper", Side = "Left" })
+    local Sec = SkinsTab:AddSection({ Name = "Skin Swapper", Side = "Left" })
 
     local function getList(ctype)
         local list = {"None"}
@@ -1932,12 +1923,7 @@ if RUN_DEMO then
         Remotes.Data.EquipCosmetic:FireServer(currentWep, "Finisher", v, {})
     end })
 
-    win:AddTab({ Name = "Visuals", Icon = "eye" })
-    win:AddTab({ Name = "Player", Icon = "person" })
-    win:AddSettingsTab()
-
     win:LoadAutoload()
 end
 
 return Eclipse
-
