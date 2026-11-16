@@ -5314,11 +5314,17 @@ end)
 Library.IsMobile = isMobile
 Library.ShowCustomCursor = false
 pcall(function()
-    Library.MainColor       = Color3.fromRGB(26, 27, 31)
-    Library.BackgroundColor = Color3.fromRGB(17, 18, 21)
-    Library.AccentColor     = Color3.fromRGB(96, 165, 250)
-    Library.OutlineColor    = Color3.fromRGB(43, 45, 52)
-    Library.FontColor       = Color3.fromRGB(239, 241, 245)
+    Library.Scheme.BackgroundColor = Color3.fromRGB(17, 19, 28)
+    Library.Scheme.MainColor = Color3.fromRGB(32, 36, 52)
+    Library.Scheme.AccentColor = Color3.fromRGB(130, 170, 255)
+    Library.Scheme.OutlineColor = Color3.fromRGB(105, 120, 155)
+    Library.Scheme.FontColor = Color3.fromRGB(242, 245, 255)
+
+    Library.GlassTransparency = 0.48
+    Library.GlassBlurSize = 24
+    Library.GlassDimBrightness = -0.18
+    Library.GlassDimContrast = 0.08
+    Library.GlassDimSaturation = -0.12
 end)
 local okWin, Window = pcall(function()
     return Library:CreateWindow({ Title='eclipse', Center=true, AutoShow=false, TabPadding=8,
