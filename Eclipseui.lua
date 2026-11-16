@@ -1763,23 +1763,181 @@ local RUN_DEMO = true
 
 
 if RUN_DEMO then
-        local win = Eclipse:CreateWindow({ Title = "Eclipse", Keybind = Enum.KeyCode.RightShi
+    local win = Eclipse:CreateWindow({ Title = "Eclipse", Keybind = Enum.KeyCode.RightShift })
+    
+    -- =========================================================
+    -- SKIN CHANGER LOGIC (DATA SPOOFING)
+    -- =========================================================
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local lp = Players.LocalPlayer
+    
+    local function waitModule(root, names, timeout)
+        timeout = timeout or 10
+        local obj = root
+        for _, n in ipairs(names) do
+            if not obj then return nil end
+            local ok, child = pcall(function() return obj:WaitForChild(n, timeout) end)
+            obj = ok and child or nil
+        end
+        return obj
+    end
+    local function loadGameModule(root, names)
+        local inst = waitModule(root, names)
+        if not inst then return nil end
+        local ok, mod = pcall(require, inst)
+        return ok and mod or nil
+    end
 
+    local Rivals = {
+        Enums      = loadGameModule(ReplicatedStorage, {"Modules", "EnumLibrary"}),
+        Cosmetics  = loadGameModule(ReplicatedStorage, {"Modules", "CosmeticLibrary"}),
+        PlayerData = loadGameModule(lp.PlayerScripts, {"Controllers", "PlayerDataController"}),
+    }
 
-        -- empty tabs: add sections/elements with tab:AddSection(...) when needed
-        win:AddTab({ Name = "Combat", Icon = "crosshair" })
-        win:AddTab({ Name = "Visuals", Icon = "eye" })
-        win:AddTab({ Name = "Movement", Icon = "steps" })
-        win:AddTab({ Name = "Player", Icon = "person" })
-        win:AddTab({ Name = "Misc", Icon = "wrench" })
-        win:AddSettingsTab()
+    local _eq, _favs = {}, {}
 
+    if Rivals.Cosmetics and Rivals.PlayerData then
+        -- 1. Force ownership
+        local origOwnsCosmetic = Rivals.Cosmetics.OwnsCosmetic
+        Rivals.Cosmetics.OwnsCosmetic = function(self, inv, name, weapon)
+            local cosmetic = Rivals.Cosmetics.Cosmetics[name]
+            if cosmetic and (cosmetic.Type == "Skin" or cosmetic.Type == "Wrap" or cosmetic.Type == "Charm" or cosmetic.Type == "Finisher") then
+                return true
+            end
+            return origOwnsCosmetic(self, inv, name, weapon)
+        end
 
-        -- give any element a Flag = "name" and it is saved/loaded with configs,
-        -- then call this once after all elements exist:
-        win:LoadAutoload()
+        -- 2. Trick inventory Get
+        local origGet = Rivals.PlayerData.Get
+        Rivals.PlayerData.Get = function(self, key)
+            local val = origGet(self, key)
+            if key == "CosmeticInventory" then
+                local proxy = {}
+                if type(val) == "table" then
+                    for k, v in pairs(val) do proxy[k] = v end
+                end
+                return setmetatable(proxy, {
+                    __index = function(t, k)
+                        local c = Rivals.Cosmetics.Cosmetics[k]
+                        if c and (c.Type == "Skin" or c.Type == "Wrap" or c.Type == "Charm" or c.Type == "Finisher") then return true end
+                        return nil
+                    end
+                })
+            end
+            if key == "FavoritedCosmetics" then
+                local res = val and table.clone(val) or {}
+                for wep, fv in pairs(_favs) do
+                    res[wep] = res[wep] or {}
+                    for nm, isFav in pairs(fv) do res[wep][nm] = isFav end
+                end
+                return res
+            end
+            return val
+        end
+
+        -- 3. Trick Weapon Data Get
+        local origGetWeaponData = Rivals.PlayerData.GetWeaponData
+        Rivals.PlayerData.GetWeaponData = function(self, weaponName)
+            local data = origGetWeaponData(self, weaponName)
+            if not data then return nil end
+            local merged = {}
+            for k, v in pairs(data) do merged[k] = v end
+            merged.Name = weaponName
+            if _eq[weaponName] then
+                for ctype, cdata in pairs(_eq[weaponName]) do merged[ctype] = cdata end
+            end
+            return merged
+        end
+
+        -- 4. Hook Equip Remote
+        local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local DataRem = Remotes and Remotes:FindFirstChild("Data")
+        local EquipRem = DataRem and DataRem:FindFirstChild("EquipCosmetic")
+
+        if EquipRem and hookmetamethod then
+            local oldNamecall
+            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                if getnamecallmethod() ~= "FireServer" then return oldNamecall(self, ...) end
+                if self == EquipRem then
+                    local args = {...}
+                    local weapon, ctype, cname, opts = args[1], args[2], args[3], args[4] or {}
+                    _eq[weapon] = _eq[weapon] or {}
+                    if not cname or cname == "None" or cname == "" then
+                        _eq[weapon][ctype] = nil
+                    else
+                        local base = Rivals.Cosmetics.Cosmetics[cname]
+                        if base then
+                            local cloned = {}
+                            for k, v in pairs(base) do cloned[k] = v end
+                            cloned.Name = cname
+                            cloned.Type = cloned.Type or ctype
+                            if opts.IsInverted then cloned.Inverted = true end
+                            _eq[weapon][ctype] = cloned
+                        end
+                    end
+                    task.defer(function() pcall(function() Rivals.PlayerData.CurrentData:Replicate("WeaponInventory") end) end)
+                    return
+                end
+                return oldNamecall(self, ...)
+            end)
+        end
+    end
+
+    -- =========================================================
+    -- UI BUILDER
+    -- =========================================================
+    local Tab = win:AddTab({ Name = "Skins", Icon = "crosshair" })
+    local Sec = Tab:AddSection({ Name = "Skin Swapper", Side = "Left" })
+
+    local function getList(ctype)
+        local list = {"None"}
+        if Rivals.Cosmetics then
+            for name, entry in pairs(Rivals.Cosmetics.Cosmetics) do
+                if type(entry) == "table" and entry.Type == ctype then
+                    table.insert(list, name)
+                end
+            end
+        end
+        table.sort(list)
+        return list
+    end
+
+    local currentWep = "None"
+
+    Sec:AddDropdown({ 
+        Name = "Target Weapon", 
+        Options = {"None", "Katana", "Gun", "Knife", "Bow", "Riot Shield"}, 
+        Default = "None",
+        Callback = function(v) currentWep = v end
+    })
+
+    Sec:AddDropdown({ Name = "Skin", Options = getList("Skin"), Callback = function(v) 
+        if currentWep == "None" then win:Notify({Title="Error", Text="Select a weapon first!"}) return end
+        Remotes.Data.EquipCosmetic:FireServer(currentWep, "Skin", v, {})
+    end })
+
+    Sec:AddDropdown({ Name = "Wrap", Options = getList("Wrap"), Callback = function(v) 
+        if currentWep == "None" then win:Notify({Title="Error", Text="Select a weapon first!"}) return end
+        Remotes.Data.EquipCosmetic:FireServer(currentWep, "Wrap", v, {})
+    end })
+
+    Sec:AddDropdown({ Name = "Charm", Options = getList("Charm"), Callback = function(v) 
+        if currentWep == "None" then win:Notify({Title="Error", Text="Select a weapon first!"}) return end
+        Remotes.Data.EquipCosmetic:FireServer(currentWep, "Charm", v, {})
+    end })
+
+    Sec:AddDropdown({ Name = "Finisher", Options = getList("Finisher"), Callback = function(v) 
+        if currentWep == "None" then win:Notify({Title="Error", Text="Select a weapon first!"}) return end
+        Remotes.Data.EquipCosmetic:FireServer(currentWep, "Finisher", v, {})
+    end })
+
+    win:AddTab({ Name = "Visuals", Icon = "eye" })
+    win:AddTab({ Name = "Player", Icon = "person" })
+    win:AddSettingsTab()
+
+    win:LoadAutoload()
 end
-
 
 return Eclipse
 
